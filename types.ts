@@ -47,7 +47,8 @@ export interface Student {
   classId?: string; // Linked Class
   enrollmentDate?: string;
   // Enriched fields
-  balance?: number;
+  balance?: number; // Calculated on the fly
+  cachedBalance?: number; // Stored value (Subject to Reconciliation Check)
   paid?: number;
   currentClass?: string;
 }

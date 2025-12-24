@@ -137,7 +137,8 @@ export const MOCK_STUDENTS: Student[] = [
     dob: "15/05/2000",
     location: "Hà Nội",
     classId: "C001",
-    enrollmentDate: "2023-01-10"
+    enrollmentDate: "2023-01-10",
+    cachedBalance: 0 // Correct
   },
   {
     id: "HV002",
@@ -150,7 +151,8 @@ export const MOCK_STUDENTS: Student[] = [
     dob: "22/11/1999",
     location: "Đà Nẵng",
     classId: "C003",
-    enrollmentDate: "2023-02-15"
+    enrollmentDate: "2023-02-15",
+    cachedBalance: 6000000 // INTENTIONAL ERROR: Real remaining is 4,000,000 (8m total - 4m paid). Stored 6m implies a 2m discrepancy.
   }
 ];
 

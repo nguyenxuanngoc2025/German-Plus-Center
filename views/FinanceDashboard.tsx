@@ -1,11 +1,11 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-    Line, ComposedChart, Legend 
+    Legend, Cell
 } from 'recharts';
 import FinanceDrillDownModal from '../components/FinanceDrillDownModal';
 
@@ -16,117 +16,136 @@ type DrillState = {
 
 const FinanceDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { finance, tuition, students, classes } = useData();
+  const { finance, tuition, students, classes, currentUser, discrepancies, reconcileData } = useData();
   
-  // --- STATE ---
+  // --- FILTER STATE ---
+  const [dateFilter, setDateFilter] = useState('this_month'); // this_month, last_month, this_quarter, this_year, all
+  const [classFilter, setClassFilter] = useState('all');
   const [drillDown, setDrillDown] = useState<DrillState>(null);
-  const [filterPeriod, setFilterPeriod] = useState<'month' | 'quarter' | 'year'>('year');
-  const [filterClass, setFilterClass] = useState('all');
   
-  // --- CALCULATIONS (Aggregated) ---
-  
-  // 1. Debt (Total & Count)
-  const debtStats = useMemo(() => {
-      const pending = tuition.filter(t => t.remainingAmount > 0 && (t.status === 'unpaid' || t.status === 'partial' || t.status === 'overdue'));
-      const total = pending.reduce((acc, t) => acc + t.remainingAmount, 0);
-      const overdueCount = pending.filter(t => t.status === 'overdue' || new Date(t.dueDate) < new Date()).length;
-      return { total, count: pending.length, overdueCount };
-  }, [tuition]);
+  // Integrity Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // 2. Revenue (Actual & Projected)
-  const revenueStats = useMemo(() => {
-      const actual = finance.filter(f => f.type === 'income').reduce((acc, f) => acc + f.amount, 0);
+  // --- HELPER: DATE LOGIC ---
+  const isInRange = (dateStr: string) => {
+      if (dateFilter === 'all') return true;
+      const date = new Date(dateStr);
+      const now = new Date();
       
-      const today = new Date();
-      const next30Days = new Date();
-      next30Days.setDate(today.getDate() + 30);
-      
-      const projected = tuition
-        .filter(t => t.remainingAmount > 0 && new Date(t.dueDate) >= today && new Date(t.dueDate) <= next30Days)
-        .reduce((acc, t) => acc + t.remainingAmount, 0);
-
-      return { actual, projected };
-  }, [finance, tuition]);
-
-  // 3. Chart Data (Monthly Income vs Expense)
-  const chartData = useMemo(() => {
-      const months = Array.from({length: 12}, (_, i) => i + 1);
-      return months.map(m => {
-          const monthKey = `T${m}`;
-          const monthlyIncome = finance
-            .filter(f => f.type === 'income' && new Date(f.date).getMonth() + 1 === m)
-            .reduce((acc, f) => acc + f.amount, 0);
-          const monthlyExpense = finance
-            .filter(f => f.type === 'expense' && new Date(f.date).getMonth() + 1 === m)
-            .reduce((acc, f) => acc + f.amount, 0);
-          
-          return {
-              name: monthKey,
-              income: monthlyIncome,
-              expense: monthlyExpense,
-              profit: monthlyIncome - monthlyExpense
-          };
-      });
-  }, [finance]);
-
-  // 4. Action Center Items
-  const actionItems = useMemo(() => {
-      const items = [];
-      const today = new Date();
-
-      // Overdue > 7 Days
-      const overdue = tuition.filter(t => {
-          if (t.remainingAmount <= 0) return false;
-          const diffTime = Math.abs(today.getTime() - new Date(t.dueDate).getTime());
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-          return new Date(t.dueDate) < today && diffDays > 7;
-      });
-      if (overdue.length > 0) {
-          items.push({
-              id: 'overdue',
-              type: 'urgent',
-              title: `${overdue.length} khoản thu quá hạn > 7 ngày`,
-              subtitle: `Tổng giá trị: ${overdue.reduce((a,b)=>a+b.remainingAmount,0).toLocaleString()}đ`,
-              actionLabel: 'Xử lý ngay',
-              route: '/finance/invoices'
-          });
+      switch (dateFilter) {
+          case 'this_month':
+              return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+          case 'last_month':
+              const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+              return date.getMonth() === lastMonth.getMonth() && date.getFullYear() === lastMonth.getFullYear();
+          case 'this_quarter':
+              const q = Math.floor(now.getMonth() / 3);
+              const dateQ = Math.floor(date.getMonth() / 3);
+              return q === dateQ && date.getFullYear() === now.getFullYear();
+          case 'this_year':
+              return date.getFullYear() === now.getFullYear();
+          default:
+              return true;
       }
-
-      // Partial Payments (Deposited but not full)
-      const partials = tuition.filter(t => t.status === 'partial');
-      if (partials.length > 0) {
-          items.push({
-              id: 'partial',
-              type: 'warning',
-              title: `${partials.length} học viên chưa hoàn tất học phí`,
-              subtitle: 'Đã đặt cọc, cần thu nốt phần còn lại.',
-              actionLabel: 'Xem danh sách',
-              route: '/students' // Or filtered invoice list
-          });
-      }
-
-      // Mock Refund Request
-      items.push({
-          id: 'refund',
-          type: 'info',
-          title: '1 Yêu cầu hoàn phí đang chờ duyệt',
-          subtitle: 'HV: Nguyễn Văn C - Lý do: Đi du học sớm',
-          actionLabel: 'Phê duyệt',
-          route: '#'
-      });
-
-      return items;
-  }, [tuition]);
-
-  const formatCurrency = (val: number) => {
-      if (val >= 1000000000) return (val / 1000000000).toFixed(1) + ' tỷ';
-      if (val >= 1000000) return (val / 1000000).toFixed(1) + ' tr';
-      return val.toLocaleString();
   };
 
-  const handleChartClick = (data: any) => {
-      if (data && data.activeLabel) {
-          setDrillDown({ type: 'month_detail', dataContext: { month: data.activeLabel } });
+  // --- FILTERED DATASETS ---
+  const filteredFinance = useMemo(() => {
+      return finance.filter(f => {
+          // Date Check
+          if (!isInRange(f.date)) return false;
+          // Class Check (Link via Student)
+          if (classFilter !== 'all' && f.studentId) {
+              const student = students.find(s => s.id === f.studentId);
+              if (student?.classId !== classFilter) return false;
+          }
+          return true;
+      });
+  }, [finance, students, dateFilter, classFilter]);
+
+  // SINGLE SOURCE OF TRUTH: Debt is always current outstanding state, NOT filtered by date range of invoice creation.
+  // We only filter by Class if selected.
+  const currentDebtors = useMemo(() => {
+      return tuition.filter(t => {
+          // Must have remaining amount
+          if (t.remainingAmount <= 0) return false;
+          
+          // Class Check
+          if (classFilter !== 'all') {
+              const student = students.find(s => s.id === t.studentId);
+              if (student?.classId !== classFilter) return false;
+          }
+          return true;
+      });
+  }, [tuition, students, classFilter]);
+
+  // --- SCORECARD CALCULATIONS ---
+  
+  // 1. Total Revenue (Real Income in selected period)
+  const totalRevenue = useMemo(() => 
+      filteredFinance.filter(f => f.type === 'income').reduce((sum, f) => sum + f.amount, 0),
+  [filteredFinance]);
+
+  // 2. Total Expenses (in selected period)
+  const totalExpenses = useMemo(() => 
+      filteredFinance.filter(f => f.type === 'expense').reduce((sum, f) => sum + f.amount, 0),
+  [filteredFinance]);
+
+  // 3. Accounts Receivable (Total Current Outstanding Debt) - Fixed Logic
+  const totalDebt = useMemo(() => 
+      currentDebtors.reduce((sum, t) => sum + t.remainingAmount, 0),
+  [currentDebtors]);
+
+  // 4. Projected Profit = (Revenue + Debt) - Expense
+  const projectedProfit = (totalRevenue + totalDebt) - totalExpenses;
+
+  // --- CHART DATA PREPARATION ---
+  const chartData = useMemo(() => {
+      // Group by Label based on filter
+      const dataMap: Record<string, { income: number, expense: number }> = {};
+      
+      const getLabel = (dateStr: string) => {
+          const date = new Date(dateStr);
+          if (dateFilter === 'this_year') return `T${date.getMonth() + 1}`;
+          return `${date.getDate()}/${date.getMonth() + 1}`;
+      };
+
+      // Fill Income & Expense
+      filteredFinance.forEach(f => {
+          const label = getLabel(f.date);
+          if (!dataMap[label]) dataMap[label] = { income: 0, expense: 0 };
+          if (f.type === 'income') dataMap[label].income += f.amount;
+          else dataMap[label].expense += f.amount;
+      });
+
+      // Sort and Format
+      return Object.keys(dataMap).map(label => ({
+          name: label,
+          income: dataMap[label].income,
+          expense: dataMap[label].expense,
+          profit: dataMap[label].income - dataMap[label].expense
+      })).sort((a,b) => {
+          // Simple sort logic assumption
+          return a.name.localeCompare(b.name, undefined, { numeric: true }); 
+      });
+  }, [filteredFinance, dateFilter]);
+
+  const formatCurrency = (val: number) => {
+      return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
+  };
+
+  // --- HANDLERS ---
+  const handleDebtClick = () => {
+      // Deep Link to Invoice List with "Debt" filter
+      navigate('/finance/invoices', { state: { filter: 'debt' } });
+  };
+
+  const handleSyncData = async () => {
+      setIsSyncing(true);
+      const result = await reconcileData();
+      setIsSyncing(false);
+      if(result.success) {
+          alert(`Đã đồng bộ thành công ${result.count} hồ sơ học viên!`);
       }
   };
 
@@ -137,201 +156,193 @@ const FinanceDashboard: React.FC = () => {
       <main className="flex-1 overflow-y-auto p-6 md:p-8 scroll-smooth">
         <div className="max-w-[1600px] mx-auto flex flex-col gap-8">
             
-            {/* 1. CONTROL BAR & FILTERS */}
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dòng tiền & Hiệu quả kinh doanh</h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Báo cáo thời gian thực • Cập nhật lúc {new Date().toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    {/* Period Filter */}
-                    <div className="bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 flex shadow-sm">
-                        <button onClick={() => setFilterPeriod('month')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterPeriod === 'month' ? 'bg-primary text-white shadow' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Tháng</button>
-                        <button onClick={() => setFilterPeriod('quarter')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterPeriod === 'quarter' ? 'bg-primary text-white shadow' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Quý</button>
-                        <button onClick={() => setFilterPeriod('year')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterPeriod === 'year' ? 'bg-primary text-white shadow' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Năm</button>
+            {/* ALERT WIDGET: DATA INTEGRITY CHECK */}
+            {discrepancies.length > 0 && (
+                <div className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-lg flex items-center justify-between shadow-sm animate-in slide-in-from-top-2">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-orange-100 rounded-full text-orange-600">
+                            <span className="material-symbols-outlined animate-pulse">cloud_off</span>
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-orange-800 text-sm">Phát hiện sai lệch dữ liệu</h3>
+                            <p className="text-xs text-orange-700 mt-0.5">
+                                Có <strong className="font-bold">{discrepancies.length} học viên</strong> có số dư thực tế không khớp với hồ sơ lưu trữ.
+                            </p>
+                        </div>
                     </div>
-                    {/* Class Filter */}
-                    <select 
-                        className="h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-200 focus:ring-primary cursor-pointer shadow-sm"
-                        value={filterClass}
-                        onChange={(e) => setFilterClass(e.target.value)}
-                    >
-                        <option value="all">Toàn hệ thống</option>
-                        <option value="offline">Cơ sở 1 (Offline)</option>
-                        <option value="online">Hệ thống Online</option>
-                        {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    {/* Audit Button */}
-                    <button 
-                        onClick={() => setDrillDown({ type: 'audit' })}
-                        className="h-10 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-primary text-slate-700 dark:text-slate-200 text-sm font-bold rounded-lg shadow-sm flex items-center gap-2 hover:text-primary transition-all"
-                    >
-                        <span className="material-symbols-outlined text-[18px]">account_balance</span>
+                    <div className="flex items-center gap-4">
+                        <div className="hidden md:flex flex-col text-right mr-4">
+                            <span className="text-[10px] text-slate-500 uppercase font-bold">Mẫu sai lệch</span>
+                            <span className="text-xs font-mono text-slate-700">
+                                {discrepancies[0].studentName}: {formatCurrency(discrepancies[0].cached)} (Lưu) ≠ {formatCurrency(discrepancies[0].calculated)} (Thực)
+                            </span>
+                        </div>
+                        <button 
+                            onClick={handleSyncData}
+                            disabled={isSyncing}
+                            className={`px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition-all ${isSyncing ? 'opacity-75 cursor-wait' : ''}`}
+                        >
+                            {isSyncing ? (
+                                <>
+                                    <span className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full"></span>
+                                    Đang xử lý...
+                                </>
+                            ) : (
+                                <>
+                                    <span className="material-symbols-outlined text-[16px]">sync_problem</span>
+                                    Đồng bộ lại
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* 1. UNIVERSAL FILTER BAR */}
+            <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-4 sticky top-0 z-10">
+                <div className="flex items-center gap-3 w-full xl:w-auto overflow-x-auto pb-1 xl:pb-0">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <span className="material-symbols-outlined text-slate-500 text-[20px]">calendar_month</span>
+                        <select 
+                            value={dateFilter}
+                            onChange={(e) => setDateFilter(e.target.value)}
+                            className="bg-transparent border-none text-sm font-bold text-slate-700 dark:text-white focus:ring-0 cursor-pointer min-w-[100px]"
+                        >
+                            <option value="this_month">Tháng này</option>
+                            <option value="last_month">Tháng trước</option>
+                            <option value="this_quarter">Quý này</option>
+                            <option value="this_year">Năm nay</option>
+                            <option value="all">Toàn thời gian</option>
+                        </select>
+                    </div>
+
+                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <span className="material-symbols-outlined text-slate-500 text-[20px]">school</span>
+                        <select 
+                            value={classFilter}
+                            onChange={(e) => setClassFilter(e.target.value)}
+                            className="bg-transparent border-none text-sm font-bold text-slate-700 dark:text-white focus:ring-0 cursor-pointer min-w-[150px]"
+                        >
+                            <option value="all">Tất cả Lớp/Cơ sở</option>
+                            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                    </div>
+                </div>
+
+                <div className="flex gap-2 w-full xl:w-auto justify-end">
+                    <button onClick={() => setDrillDown({ type: 'audit' })} className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-sm">
+                        <span className="material-symbols-outlined text-[18px]">fact_check</span>
                         Đối soát quỹ
+                    </button>
+                    <button className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-dark transition-colors shadow-md shadow-primary/20 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">download</span>
+                        Báo cáo
                     </button>
                 </div>
             </div>
 
-            {/* 2. INTERACTIVE SCORECARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Total Debt Card */}
-                <div 
-                    onClick={() => setDrillDown({ type: 'debt' })}
-                    className="bg-white dark:bg-[#1a202c] rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-lg hover:border-red-300 transition-all cursor-pointer group relative overflow-hidden"
-                >
-                    <div className="absolute right-0 top-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
-                        <span className="material-symbols-outlined text-8xl text-red-500">warning</span>
-                    </div>
+            {/* 2. EXECUTIVE SCORECARDS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                {/* Revenue Card */}
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group">
+                    <div className="absolute right-[-10px] top-[-10px] p-6 bg-emerald-50 dark:bg-emerald-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                     <div className="relative z-10">
-                        <div className="flex items-center gap-2 mb-3">
-                            <div className="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 rounded-lg">
-                                <span className="material-symbols-outlined text-[24px]">pending_actions</span>
-                            </div>
-                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wide">Tổng Công Nợ</span>
-                        </div>
-                        <h3 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-1 group-hover:text-red-600 transition-colors">
-                            {debtStats.total.toLocaleString()} <span className="text-lg text-slate-400 font-medium">vnđ</span>
-                        </h3>
-                        <p className="text-sm text-slate-500">
-                            Cần thu từ <span className="font-bold text-slate-800 dark:text-slate-200">{debtStats.count}</span> học viên
-                            {debtStats.overdueCount > 0 && <span className="text-red-500 font-bold ml-1">({debtStats.overdueCount} quá hạn)</span>}
-                        </p>
+                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Tổng Doanh thu</p>
+                        <h3 className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalRevenue)}</h3>
+                        <p className="text-xs text-slate-400 mt-1">Đã thực thu trong kỳ</p>
                     </div>
-                    <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs font-bold text-red-500">
-                        Chi tiết <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                    <div className="absolute bottom-4 right-4 p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-lg">
+                        <span className="material-symbols-outlined text-[24px]">payments</span>
                     </div>
                 </div>
 
-                {/* Projected Revenue Card */}
-                <div 
-                    onClick={() => setDrillDown({ type: 'projected' })}
-                    className="bg-white dark:bg-[#1a202c] rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-lg hover:border-blue-300 transition-all cursor-pointer group relative overflow-hidden"
-                >
-                    <div className="absolute right-0 top-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
-                        <span className="material-symbols-outlined text-8xl text-blue-500">calendar_month</span>
-                    </div>
+                {/* Expenses Card */}
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group">
+                    <div className="absolute right-[-10px] top-[-10px] p-6 bg-red-50 dark:bg-red-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                     <div className="relative z-10">
-                        <div className="flex items-center gap-2 mb-3">
-                            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
-                                <span className="material-symbols-outlined text-[24px]">event_upcoming</span>
-                            </div>
-                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wide">Dự kiến thu (30 ngày)</span>
-                        </div>
-                        <h3 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-1 group-hover:text-blue-600 transition-colors">
-                            {revenueStats.projected.toLocaleString()} <span className="text-lg text-slate-400 font-medium">vnđ</span>
-                        </h3>
-                        <p className="text-sm text-slate-500">
-                            Dòng tiền dự kiến về từ các khoản đến hạn
-                        </p>
+                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Tổng Chi phí</p>
+                        <h3 className="text-2xl font-extrabold text-red-600 dark:text-red-400">{formatCurrency(totalExpenses)}</h3>
+                        <p className="text-xs text-slate-400 mt-1">Đã thực chi trong kỳ</p>
                     </div>
-                    <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs font-bold text-blue-500">
-                        Lịch thu <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                    <div className="absolute bottom-4 right-4 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg">
+                        <span className="material-symbols-outlined text-[24px]">trending_down</span>
                     </div>
                 </div>
 
-                {/* Actual Revenue Card */}
+                {/* Debt Card - CLICK TO NAVIGATE */}
                 <div 
-                    onClick={() => setDrillDown({ type: 'revenue_source' })}
-                    className="bg-white dark:bg-[#1a202c] rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-lg hover:border-emerald-300 transition-all cursor-pointer group relative overflow-hidden"
+                    onClick={handleDebtClick}
+                    className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group cursor-pointer hover:border-orange-300 transition-all ring-0 hover:ring-2 hover:ring-orange-100"
                 >
-                    <div className="absolute right-0 top-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
-                        <span className="material-symbols-outlined text-8xl text-emerald-500">payments</span>
-                    </div>
+                    <div className="absolute right-[-10px] top-[-10px] p-6 bg-orange-50 dark:bg-orange-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                     <div className="relative z-10">
-                        <div className="flex items-center gap-2 mb-3">
-                            <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg">
-                                <span className="material-symbols-outlined text-[24px]">attach_money</span>
-                            </div>
-                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wide">Doanh thu Thực tế</span>
-                        </div>
-                        <h3 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-1 group-hover:text-emerald-600 transition-colors">
-                            {revenueStats.actual.toLocaleString()} <span className="text-lg text-slate-400 font-medium">vnđ</span>
-                        </h3>
-                        <p className="text-sm text-slate-500">
-                            Tổng thu nhập đã ghi nhận trong năm nay
+                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Phải thu (Công nợ)</p>
+                        <h3 className="text-2xl font-extrabold text-orange-600 dark:text-orange-400">{formatCurrency(totalDebt)}</h3>
+                        <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                            Tổng nợ hiện tại
+                            <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
                         </p>
                     </div>
-                    <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs font-bold text-emerald-500">
-                        Phân bổ <span className="material-symbols-outlined text-[14px]">pie_chart</span>
+                    <div className="absolute bottom-4 right-4 p-2 bg-orange-100 dark:bg-orange-900/30 text-orange-600 rounded-lg">
+                        <span className="material-symbols-outlined text-[24px]">pending_actions</span>
+                    </div>
+                </div>
+
+                {/* Profit Card */}
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group">
+                    <div className="absolute right-[-10px] top-[-10px] p-6 bg-blue-50 dark:bg-blue-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
+                    <div className="relative z-10">
+                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Lợi nhuận dự kiến</p>
+                        <h3 className={`text-2xl font-extrabold ${projectedProfit >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-500'}`}>
+                            {formatCurrency(projectedProfit)}
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1">(Thu + Nợ) - Chi</p>
+                    </div>
+                    <div className="absolute bottom-4 right-4 p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg">
+                        <span className="material-symbols-outlined text-[24px]">account_balance_wallet</span>
                     </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* 3. CASH FLOW CHART (Interactive) */}
-                <div className="xl:col-span-2 bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col">
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Biểu đồ Dòng tiền (Thu/Chi)</h3>
-                        <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                            <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-[#3b82f6]"></span> Thu</span>
-                            <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-[#f43f5e]"></span> Chi</span>
-                            <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-emerald-500"></span> Lợi nhuận</span>
-                        </div>
+            {/* 3. COMPARATIVE CHART */}
+            <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-[400px]">
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">Tương quan Doanh thu & Chi phí</h3>
+                        <p className="text-sm text-slate-500">Phân tích theo thời gian thực</p>
                     </div>
-                    <div className="flex-1 min-h-[350px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <ComposedChart data={chartData} onClick={handleChartClick} style={{cursor: 'pointer'}}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} tickFormatter={(val) => `${val/1000000}tr`} />
-                                <Tooltip 
-                                    cursor={{fill: 'rgba(0,0,0,0.05)'}}
-                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                    formatter={(value: number) => new Intl.NumberFormat('vi-VN').format(value) + ' đ'}
-                                />
-                                <Bar dataKey="income" name="Doanh thu" barSize={20} fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="expense" name="Chi phí" barSize={20} fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                                <Line type="monotone" dataKey="profit" name="Lợi nhuận ròng" stroke="#10b981" strokeWidth={3} dot={{r: 4, strokeWidth: 2}} activeDot={{r: 6}} />
-                            </ComposedChart>
-                        </ResponsiveContainer>
+                    <div className="flex items-center gap-3 text-xs font-bold">
+                        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-emerald-500 rounded-sm"></div> Doanh thu</div>
+                        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> Chi phí</div>
                     </div>
-                    <p className="text-center text-xs text-slate-400 mt-4 italic">
-                        * Click vào cột tháng bất kỳ để xem chi tiết giao dịch
-                    </p>
                 </div>
-
-                {/* 4. ACTION CENTER (Vấn đề cần giải quyết) */}
-                <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col overflow-hidden">
-                    <div className="p-5 border-b border-slate-100 dark:border-slate-700 bg-red-50/50 dark:bg-red-900/10 flex justify-between items-center">
-                        <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                            <span className="material-symbols-outlined">notification_important</span>
-                            <h3 className="font-bold text-sm uppercase tracking-wide">Vấn đề cần xử lý</h3>
-                        </div>
-                        <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">{actionItems.length}</span>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                        {actionItems.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8">
-                                <span className="material-symbols-outlined text-4xl mb-2 text-green-500">task_alt</span>
-                                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Tuyệt vời! Không có vấn đề tồn đọng.</p>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col gap-2">
-                                {actionItems.map((item, idx) => (
-                                    <div key={idx} className="p-4 rounded-xl border border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="flex gap-2">
-                                                {item.type === 'urgent' && <span className="size-2 mt-1.5 rounded-full bg-red-500 shrink-0"></span>}
-                                                {item.type === 'warning' && <span className="size-2 mt-1.5 rounded-full bg-orange-500 shrink-0"></span>}
-                                                {item.type === 'info' && <span className="size-2 mt-1.5 rounded-full bg-blue-500 shrink-0"></span>}
-                                                <h4 className="font-bold text-sm text-slate-800 dark:text-white leading-tight">{item.title}</h4>
-                                            </div>
-                                        </div>
-                                        <p className="text-xs text-slate-500 pl-4 mb-3">{item.subtitle}</p>
-                                        <div className="pl-4">
-                                            <button 
-                                                onClick={() => navigate(item.route)}
-                                                className="text-xs font-bold text-white bg-slate-900 dark:bg-primary px-3 py-1.5 rounded-lg shadow-sm hover:shadow hover:-translate-y-0.5 transition-all flex items-center gap-1 w-fit"
-                                            >
-                                                {item.actionLabel}
-                                                <span className="material-symbols-outlined text-[12px]">arrow_forward</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                
+                <div className="flex-1 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis 
+                                dataKey="name" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{fill: '#64748b', fontSize: 12}} 
+                                dy={10} 
+                            />
+                            <YAxis 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{fill: '#64748b', fontSize: 12}} 
+                                tickFormatter={(val) => `${val/1000000}tr`} 
+                            />
+                            <Tooltip 
+                                cursor={{fill: 'rgba(0,0,0,0.05)'}}
+                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                                formatter={(value: number) => new Intl.NumberFormat('vi-VN').format(value)}
+                            />
+                            <Bar dataKey="income" name="Doanh thu" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} />
+                            <Bar dataKey="expense" name="Chi phí" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={30} />
+                        </BarChart>
+                    </ResponsiveContainer>
                 </div>
             </div>
 

@@ -18,6 +18,7 @@ interface CalendarEvent {
   level: string; // A1, A2...
   status: 'active' | 'upcoming' | 'full'; // Added status for coloring
   hasConflict?: boolean; // New collision flag
+  color: string; // Added required color prop
 }
 
 const Calendar: React.FC = () => {
@@ -76,6 +77,11 @@ const Calendar: React.FC = () => {
                     else roomDisplay = 'P.101'; // Mock default room for demo collision
                 }
 
+                // Determine Color
+                let color = 'blue';
+                if (cls.status === 'upcoming') color = 'emerald';
+                else if (cls.status === 'full') color = 'orange';
+
                 generatedEvents.push({
                     id: `${cls.id}-${loopDate.toISOString().split('T')[0]}`,
                     classId: cls.id,
@@ -87,6 +93,7 @@ const Calendar: React.FC = () => {
                     room: roomDisplay,
                     level: cls.name.split(' ')[2] || 'A1',
                     status: cls.status,
+                    color: color,
                 });
             }
             loopDate.setDate(loopDate.getDate() + 1);

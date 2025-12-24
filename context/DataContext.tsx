@@ -63,6 +63,13 @@ interface PaymentPlan {
     installments: { date: string; amount: number }[];
 }
 
+interface Discrepancy {
+    studentId: string;
+    studentName: string;
+    cached: number;
+    calculated: number;
+}
+
 interface DataContextType {
   leads: Lead[];
   students: Student[];
@@ -75,6 +82,10 @@ interface DataContextType {
   isAuthenticated: boolean;
   currentUser: UserInfo | null;
   
+  // Data Integrity
+  discrepancies: Discrepancy[];
+  reconcileData: () => Promise<{ success: boolean, count: number }>;
+
   // Actions
   addLead: (lead: Omit<Lead, 'id' | 'status' | 'avatar' | 'lastActivity'>) => void;
   updateLead: (id: string, updates: Partial<Lead>) => void;
@@ -104,7 +115,7 @@ interface DataContextType {
   addClass: (classData: Omit<ClassItem, 'id' | 'students' | 'progress' | 'status'>, initialStudentIds: string[], initialLeadIds: string[]) => void;
   updateClass: (id: string, updates: Partial<ClassItem>) => void;
   addStaff: (staffData: Omit<Staff, 'id' | 'status' | 'joinDate' | 'avatar'>) => void;
-  addFinanceRecord: (record: Omit<FinanceRecord, 'id' | 'date'>) => void;
+  addFinanceRecord: (record: Omit<FinanceRecord, 'id' | 'date'> & { date?: string }) => void;
   saveAttendance: (classId: string, date: string, attendanceData: Record<string, boolean>) => { success: boolean; message: string };
   
   // Document Actions
@@ -129,6 +140,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [finance, setFinance] = useState<FinanceRecord[]>(MOCK_FINANCE);
   const [staff, setStaff] = useState<Staff[]>(MOCK_STAFF);
   const [documents, setDocuments] = useState<Document[]>(MOCK_DOCUMENTS);
+  const [discrepancies, setDiscrepancies] = useState<Discrepancy[]>([]);
   
   // --- SETTINGS STATE ---
   const [settings, setSettingsState] = useState<SystemSettings>(() => {
@@ -176,6 +188,61 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       localStorage.setItem('german_plus_auth', 'true');
       return true;
   });
+
+  // --- BACKGROUND INTEGRITY CHECK ---
+  useEffect(() => {
+      if (!isAuthenticated) return;
+
+      const checkIntegrity = () => {
+          const issues: Discrepancy[] = [];
+          
+          students.forEach(student => {
+              // 1. Calculate REAL debt from Invoice Table (Source of Truth)
+              const studentTuition = tuition.filter(t => t.studentId === student.id);
+              const realDebt = studentTuition.reduce((sum, t) => sum + t.remainingAmount, 0);
+              
+              // 2. Compare with Stored Cache (Simulated Database Field)
+              // If cachedBalance is undefined, we assume it's 0 or synced, but for this demo logic we check if property exists
+              const cached = student.cachedBalance !== undefined ? student.cachedBalance : realDebt; 
+              
+              if (cached !== realDebt) {
+                  issues.push({
+                      studentId: student.id,
+                      studentName: student.name,
+                      cached: cached,
+                      calculated: realDebt
+                  });
+              }
+          });
+
+          setDiscrepancies(issues);
+      };
+
+      // Run initially
+      checkIntegrity();
+
+      // Optional: Set interval for periodic checks (e.g., every 30s)
+      const interval = setInterval(checkIntegrity, 30000);
+      return () => clearInterval(interval);
+
+  }, [students, tuition, isAuthenticated]);
+
+  const reconcileData = async () => {
+      return new Promise<{ success: boolean, count: number }>((resolve) => {
+          setTimeout(() => {
+              const updatedStudents = students.map(s => {
+                  const studentTuition = tuition.filter(t => t.studentId === s.id);
+                  const realDebt = studentTuition.reduce((sum, t) => sum + t.remainingAmount, 0);
+                  return { ...s, cachedBalance: realDebt }; // Sync value
+              });
+              
+              setStudents(updatedStudents);
+              setDiscrepancies([]); // Clear alert
+              
+              resolve({ success: true, count: discrepancies.length });
+          }, 1500); // Simulate processing delay
+      });
+  };
 
   // --- SIMULATION STATE ---
   const [originalRole, setOriginalRole] = useState<UserRole | null>(null);
@@ -301,7 +368,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       dob: '01/01/2000',
       location: 'Hà Nội',
       classId: classId,
-      enrollmentDate: new Date().toISOString().split('T')[0]
+      enrollmentDate: new Date().toISOString().split('T')[0],
+      cachedBalance: tuitionFee - (paymentPlan ? paymentPlan.deposit : 0) // Initialize correctly
     };
 
     // 2. Create Tuition Record(s) based on Plan
@@ -420,7 +488,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     let newStatus: Tuition['status'] = 'partial';
     if (newRemaining <= 0) newStatus = 'paid';
     
+    // Update Invoice
     setTuition(prev => prev.map(t => t.id === tuitionId ? { ...t, paidAmount: newPaid, remainingAmount: newRemaining, status: newStatus } : t));
+
+    // Update Student Cached Balance (Simulated Real-time sync, but if we want to demonstrate the alert, we might skip this in a buggy version)
+    // Here we update it to keep data consistent, assuming the bug comes from external factors or legacy data.
+    setStudents(prev => prev.map(s => {
+        if (s.id === tuitionRecord.studentId && s.cachedBalance !== undefined) {
+            return { ...s, cachedBalance: Math.max(0, s.cachedBalance - amount) };
+        }
+        return s;
+    }));
 
     const student = students.find(s => s.id === tuitionRecord.studentId);
     const newFinance: FinanceRecord = {
@@ -483,6 +561,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       setTuition(updatedTuition);
       setFinance(prev => [...newFinanceRecords, ...prev]);
+      
+      // Update Cached Balance
+      setStudents(prev => prev.map(s => {
+          if (s.id === studentId && s.cachedBalance !== undefined) {
+              return { ...s, cachedBalance: Math.max(0, s.cachedBalance - amount) };
+          }
+          return s;
+      }));
 
       return { 
           success: true, 
@@ -498,7 +584,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setTuition(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
 
-  const addFinanceRecord = (record: Omit<FinanceRecord, 'id' | 'date'>) => {
+  const addFinanceRecord = (record: Omit<FinanceRecord, 'id' | 'date'> & { date?: string }) => {
       const newRecord: FinanceRecord = {
           id: `FIN-${Date.now()}`,
           date: new Date().toISOString().split('T')[0],
@@ -621,7 +707,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const studentClass = classes.find(c => c.id === student.classId);
       return {
         ...student,
-        balance: totalRemaining,
+        balance: totalRemaining, // Value B (Real time)
         paid: totalPaid,
         currentClass: studentClass ? studentClass.name : ''
       };
@@ -654,6 +740,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logout,
     handleRoleChange,
     
+    // Integrity
+    discrepancies,
+    reconcileData,
+
     // Simulation
     isSimulating: !!originalRole,
     originalRole,

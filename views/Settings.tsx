@@ -156,48 +156,53 @@ const Settings: React.FC = () => {
                 </div>
             </div>
 
-            {/* LIVE ROLE SIMULATION MODE */}
-            <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-xl shadow-lg p-6 text-white relative overflow-hidden">
-                <div className="relative z-10 flex flex-col gap-4">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <h2 className="text-xl font-bold flex items-center gap-2">
-                                <span className="material-symbols-outlined">theater_comedy</span>
-                                Chế độ Xem mô phỏng
-                            </h2>
-                            <p className="text-orange-100 text-sm mt-1 max-w-2xl">
-                                Kiểm tra giao diện và quyền hạn thực tế của các vai trò khác nhau mà không cần đăng xuất. 
-                                Hệ thống sẽ hiển thị chính xác những gì người dùng đó nhìn thấy.
-                            </p>
-                        </div>
+            {/* LIVE ROLE SIMULATION MODE - REFINED */}
+            <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl border-2 border-dashed border-blue-200 dark:border-slate-700 p-6 relative overflow-hidden">
+                <div className="relative z-10 flex flex-col gap-4 items-center text-center">
+                    <div>
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center justify-center gap-2">
+                            <span className="material-symbols-outlined text-blue-600">theater_comedy</span>
+                            Chế độ Xem mô phỏng
+                        </h2>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 max-w-xl mx-auto">
+                            Kiểm tra giao diện và quyền hạn thực tế của các vai trò khác nhau mà không cần đăng xuất.
+                        </p>
                     </div>
                     
-                    <div className="bg-white/10 p-4 rounded-lg border border-white/20 flex flex-col md:flex-row items-center gap-4">
-                        <div className="flex-1 w-full">
-                            <label className="text-xs font-bold uppercase text-orange-200 mb-1.5 block">Chọn vai trò mô phỏng</label>
+                    <div className="flex flex-col md:flex-row items-center gap-[15px] w-full max-w-lg mx-auto justify-center">
+                        <div className="relative w-full md:w-auto md:flex-1">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <span className="material-symbols-outlined text-slate-400 text-[20px]">person_outline</span>
+                            </div>
                             <select 
                                 value={simRole}
                                 onChange={(e) => setSimRole(e.target.value as UserRole)}
-                                className="w-full h-10 pl-3 pr-8 rounded-lg bg-white text-slate-800 text-sm font-bold focus:ring-2 focus:ring-orange-300 border-none cursor-pointer"
+                                className="w-full h-10 pl-10 pr-8 rounded-[8px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer shadow-sm appearance-none outline-none transition-all"
                             >
-                                <option value="admin">Super Admin (Mặc định)</option>
-                                <option value="manager">Manager (Quản lý giáo vụ)</option>
+                                <option value="admin">Super Admin</option>
+                                <option value="manager">Manager (Quản lý)</option>
                                 <option value="teacher">Giáo viên</option>
-                                <option value="sale">Nhân viên Tư vấn</option>
+                                <option value="sale">Tư vấn viên</option>
                                 <option value="student">Học viên</option>
                             </select>
+                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <span className="material-symbols-outlined text-slate-400 text-[18px]">expand_more</span>
+                            </div>
                         </div>
+                        
                         <button 
                             onClick={handleActivateSimulation}
-                            className="w-full md:w-auto px-6 h-10 bg-slate-900 hover:bg-black text-white rounded-lg text-sm font-bold shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 whitespace-nowrap mt-5 md:mt-0"
+                            className="w-full md:w-auto px-6 h-10 bg-[#1A365D] hover:bg-[#2c4c7c] text-white rounded-[8px] text-sm font-bold shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap"
                         >
                             <span className="material-symbols-outlined text-[18px]">play_circle</span>
                             Kích hoạt mô phỏng
                         </button>
                     </div>
+                    
+                    <p className="text-xs text-slate-400 dark:text-slate-500 italic">
+                        Chọn vai trò để xem giao diện tương ứng từ góc nhìn của họ
+                    </p>
                 </div>
-                {/* Background Decor */}
-                <div className="absolute -right-10 -bottom-20 h-64 w-64 bg-white/10 rounded-full blur-3xl"></div>
             </div>
 
             {/* Main Grid Layout */}
