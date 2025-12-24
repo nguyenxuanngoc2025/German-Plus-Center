@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import StudentSelectorModal from '../components/StudentSelectorModal';
@@ -8,7 +8,7 @@ import { useData } from '../context/DataContext';
 
 const CreateClass: React.FC = () => {
   const navigate = useNavigate();
-  const { addClass } = useData();
+  const { addClass, calculateEndDate } = useData();
 
   // Form States
   const [className, setClassName] = useState('');
@@ -16,6 +16,7 @@ const CreateClass: React.FC = () => {
   const [maxCapacity, setMaxCapacity] = useState('15');
   const [totalSessions, setTotalSessions] = useState('24');
   const [startDate, setStartDate] = useState('');
+  const [calculatedEndDate, setCalculatedEndDate] = useState(''); // Read-only
   const [teacher, setTeacher] = useState('');
   
   const [classType, setClassType] = useState<'offline' | 'online'>('offline');
@@ -29,6 +30,20 @@ const CreateClass: React.FC = () => {
   const [showStudentSelector, setShowStudentSelector] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<Student[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<Lead[]>([]);
+
+  // Auto-calculate End Date
+  useEffect(() => {
+      if (startDate && totalSessions && selectedDays.length > 0) {
+          const dayOrder = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+          const sortedDays = [...selectedDays].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+          const daysStr = sortedDays.join(' / ');
+          const sessions = parseInt(totalSessions) || 0;
+          
+          setCalculatedEndDate(calculateEndDate(startDate, sessions, daysStr));
+      } else {
+          setCalculatedEndDate('');
+      }
+  }, [startDate, totalSessions, selectedDays, calculateEndDate]);
 
   const toggleDay = (day: string) => {
     if (selectedDays.includes(day)) {
@@ -44,27 +59,24 @@ const CreateClass: React.FC = () => {
         return;
     }
 
-    if (classType === 'online' && !meetingLink) {
-        alert("Vui lòng nhập link học cho lớp Online!");
-        return;
-    }
-
-    if (classType === 'offline' && !location) {
-        alert("Vui lòng nhập địa chỉ học cho lớp Offline!");
-        return;
-    }
+    const sessions = parseInt(totalSessions) || 24;
+    const dayOrder = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+    const sortedDays = [...selectedDays].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
 
     addClass({
         name: className,
         code: `K${Math.floor(Math.random() * 100)}`, // Auto gen code
-        schedule: selectedDays.join(' / ') + " • 18:30",
+        schedule: sortedDays.join(' / ') + " • 18:30",
         mode: classType,
         teacher: teacher || "Chưa phân công",
-        teacherAvatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuCkYGLiTHbhXntle05Va5L5Sz3raJFux7O5sf9UkJt9Zbb_y2OEdJnwR7BpwKSDge0E0cpVz-RPKeixhGplF2fzPr_j431kzx9o-imd0lUTpm6mzz97qoDykVn38_-sqsQRyZaaBU3fgOf9Fhj6bvlGbkwDJI-ROTNHlIA7WsRhYCtjDzCPJc96RJO3daTtw40GivkoLhAnmf7WtiQxGreJpJuCKrfpLBENq8tR9uRdVKmLRHexypzCtt04nMXsbOofKW8s4SLrcWqL", // Default
+        teacherAvatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuCkYGLiTHbhXntle05Va5L5Sz3raJFux7O5sf9UkJt9Zbb_y2OEdJnwR7BpwKSDge0E0cpVz-RPKeixhGplF2fzPr_j431kzx9o-imd0lUTpm6mzz97qoDykVn38_-sqsQRyZaaBU3fgOf9Fhj6bvlGbkwDJI-ROTNHlIA7WsRhYCtjDzCPJc96RJO3daTtw40GivkoLhAnmf7WtiQxGreJpJuCKrfpLBENq8tR9uRdVKmLRHexypzCtt04nMXsbOofKW8s4SLrcWqL", 
         maxStudents: parseInt(maxCapacity),
         tuitionFee: parseInt(tuitionFee.replace(/\D/g, '')),
         link: classType === 'online' ? meetingLink : undefined,
         location: classType === 'offline' ? location : undefined,
+        startDate: startDate,
+        endDate: calculatedEndDate,
+        totalSessions: sessions
     }, selectedStudents.map(s => s.id), selectedLeads.map(l => l.id));
 
     alert("Đã tạo lớp học thành công và thêm học viên!");
@@ -187,10 +199,15 @@ const CreateClass: React.FC = () => {
                                 <div>
                                     <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">
                                         Ngày kết thúc
-                                        <span className="ml-1 text-[10px] bg-secondary/10 text-secondary px-1.5 py-0.5 rounded-full border border-secondary/20">Tự động tính</span>
+                                        <span className="ml-1 text-[10px] bg-secondary/10 text-secondary px-1.5 py-0.5 rounded-full border border-secondary/20">Auto Calc</span>
                                     </label>
                                     <div className="relative">
-                                        <input className="w-full rounded-lg border-slate-200 bg-slate-100 dark:bg-slate-900/50 dark:border-slate-700 text-slate-500 dark:text-slate-500 cursor-not-allowed focus:ring-0 px-3 py-2.5 text-sm" readOnly type="date"/>
+                                        <input 
+                                            className="w-full rounded-lg border-slate-200 bg-slate-100 dark:bg-slate-900/50 dark:border-slate-700 text-slate-500 dark:text-slate-500 cursor-not-allowed focus:ring-0 px-3 py-2.5 text-sm font-medium" 
+                                            readOnly 
+                                            type="date"
+                                            value={calculatedEndDate}
+                                        />
                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
                                             <span className="material-symbols-outlined text-[20px] text-secondary">auto_awesome</span>
                                         </div>

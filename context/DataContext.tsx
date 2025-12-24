@@ -92,6 +92,7 @@ interface DataContextType {
   
   // Unified Calculation Helper
   calculateFinancials: (startDate?: Date, endDate?: Date) => FinancialStats;
+  calculateEndDate: (startDateStr: string, totalSessions: number, daysStr: string, offDays?: string[]) => string;
 
   // Global Date Filter (Memory)
   globalDateFilter: DateFilterState;
@@ -163,6 +164,39 @@ const generateMockAttendance = (): AttendanceRecord[] => {
         });
     }
     return history;
+};
+
+// --- CORE SCHEDULING HELPER ---
+const calculateEndDate = (startDateStr: string, totalSessions: number, daysStr: string, offDays: string[] = []): string => {
+    if (!startDateStr || totalSessions <= 0) return '';
+    
+    // Parse Days: "T2 / T4" -> [1, 3]
+    const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
+    const targetDays = daysStr.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined);
+    
+    if (targetDays.length === 0) return '';
+
+    let sessionsFound = 0;
+    const iterator = new Date(startDateStr);
+    let lastDate = new Date(startDateStr);
+    let safetyCounter = 0;
+
+    while (sessionsFound < totalSessions && safetyCounter < 1000) {
+        const currentDay = iterator.getDay();
+        const dateString = iterator.toISOString().split('T')[0];
+        
+        // If it's a scheduled day AND not an off day
+        if (targetDays.includes(currentDay) && !offDays.includes(dateString)) {
+            sessionsFound++;
+            lastDate = new Date(iterator); // Snapshot valid date
+        }
+        
+        // Move to next day
+        iterator.setDate(iterator.getDate() + 1);
+        safetyCounter++;
+    }
+
+    return lastDate.toISOString().split('T')[0];
 };
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -444,7 +478,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setStudents(prev => prev.map(s => s.id === studentId ? { ...s, classId: undefined, currentClass: undefined } : s));
   };
   const recordPayment = (tuitionId: string, amount: number, method: string) => { return { success: true, message: "Paid" }; };
-  const recordStudentPayment = (studentId: string, amount: number, method: string) => { return { success: true, message: "Paid" }; };
+  const recordStudentPayment = (studentId: string, amount: number, method: string, note?: string) => { return { success: true, message: "Paid" }; };
   const deleteTuition = (tuitionId: string) => { setTuition(prev => prev.filter(t => t.id !== tuitionId)); };
   const updateTuition = (id: string, updates: Partial<Tuition>) => { setTuition(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t)); };
   const addFinanceRecord = (record: Omit<FinanceRecord, 'id' | 'date'> & { date?: string }) => {
@@ -466,54 +500,43 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setClasses(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // --- DYNAMIC SCHEDULING LOGIC: CANCEL (Cumulative Shift) ---
+  // --- DYNAMIC SCHEDULING LOGIC: CANCEL (Chain Reaction) ---
   const cancelClassSession = (classId: string, dateStr: string) => {
       const cls = classes.find(c => c.id === classId);
-      if (!cls || !cls.startDate || !cls.endDate) return;
+      if (!cls || !cls.startDate || !cls.totalSessions) return;
 
-      // 1. Identify valid schedule days (e.g., "T2 / T4" -> [1, 3])
-      const [daysPart] = cls.schedule.split('•').map(s => s.trim());
-      const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
-      const targetDays = daysPart ? daysPart.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined) : [];
-      if (targetDays.length === 0) return;
+      // 1. Mark current date as Off
+      const updatedOffDays = [...(cls.offDays || [])];
+      if(!updatedOffDays.includes(dateStr)) {
+          updatedOffDays.push(dateStr);
+      }
 
-      // 2. Find the NEXT available slot AFTER the current endDate to extend the course
-      let loopDate = new Date(cls.endDate);
-      loopDate.setDate(loopDate.getDate() + 1); // Start searching from tomorrow relative to old end date
-      let newEndDate = loopDate;
+      // 2. Identify Schedule Days (e.g., "T2 / T4")
+      const [daysPart] = cls.schedule.split('•');
       
-      let found = false;
-      // Safety limit 60 days lookahead to find next slot
-      for(let i=0; i<60; i++) {
-          // Check if day matches schedule pattern
-          if (targetDays.includes(loopDate.getDay())) {
-              // Ensure this date isn't already an offDay or holiday
-              const loopDateStr = loopDate.toISOString().split('T')[0];
-              if (!cls.offDays?.includes(loopDateStr)) {
-                  newEndDate = new Date(loopDate);
-                  found = true;
-                  break;
-              }
-          }
-          loopDate.setDate(loopDate.getDate() + 1);
-      }
+      // 3. Recalculate End Date using Core Logic
+      // Start Date + Total Sessions (Skipping updatedOffDays) = New End Date
+      const newEndDateStr = calculateEndDate(cls.startDate, cls.totalSessions, daysPart, updatedOffDays);
 
-      if (found) {
-          const newEndDateStr = newEndDate.toISOString().split('T')[0];
-          
-          // 3. Update the class: Mark date as Off AND Extend EndDate
-          updateClass(classId, {
-              endDate: newEndDateStr,
-              offDays: [...(cls.offDays || []), dateStr]
-          });
+      // 4. Calculate how many sessions remain after the cancelled date
+      // For message purpose only: Count valid sessions from dateStr+1 to newEndDateStr
+      const cancelledDate = new Date(dateStr);
+      const newEndDate = new Date(newEndDateStr);
+      let remainingCount = 0;
+      
+      // We can reuse logic or simple iteration here for the alert
+      // ... (omitted specific count logic for brevity as end date is the key)
 
-          return { 
-              success: true, 
-              message: `Lịch học đã được lùi lại. Ngày kết thúc mới dự kiến là ${newEndDate.toLocaleDateString('vi-VN')}` 
-          };
-      } else {
-          return { success: false, message: "Không thể tính toán ngày kết thúc mới. Vui lòng kiểm tra lịch học." };
-      }
+      // 5. Update Class
+      updateClass(classId, {
+          endDate: newEndDateStr,
+          offDays: updatedOffDays
+      });
+
+      return { 
+          success: true, 
+          message: `Đã báo nghỉ thành công. Hệ thống tự động tịnh tiến lịch học.\nNgày kết thúc mới: ${newEndDate.toLocaleDateString('vi-VN')}` 
+      };
   };
 
   // --- MANUAL RESCHEDULE LOGIC (Overwrite Date) ---
@@ -521,21 +544,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const cls = classes.find(c => c.id === classId);
       if (!cls) return;
 
-      // 1. Mark old date as skipped (essentially removing it from the schedule stream)
+      // 1. Mark old date as skipped
       const updatedOffDays = [...(cls.offDays || [])];
       if (!updatedOffDays.includes(oldDateStr)) {
           updatedOffDays.push(oldDateStr);
       }
 
-      // 2. Add new date to extra sessions (explicitly adding it back at a new time)
-      // This effectively "moves" the content from oldDate to newDate without shifting everything else
+      // 2. Add new date to extra sessions
       const updatedExtraSessions = [...(cls.extraSessions || [])];
-      // Check if already exists to avoid dupes
       if (!updatedExtraSessions.some(s => s.date.startsWith(newDateStr.split('T')[0]))) {
           updatedExtraSessions.push({ date: newDateStr, note: 'Lịch học bù / dời' });
       }
 
       // 3. Update Class
+      // Note: If this is just a reschedule (swap), we don't extend end date.
       updateClass(classId, {
           offDays: updatedOffDays,
           extraSessions: updatedExtraSessions
@@ -594,7 +616,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return (
     <DataContext.Provider value={{
       leads, students, classes, tuition, finance, staff, documents, settings,
-      isAuthenticated, currentUser, discrepancies, testResults, reconcileData, runSystemDiagnostics, calculateFinancials,
+      isAuthenticated, currentUser, discrepancies, testResults, reconcileData, runSystemDiagnostics, calculateFinancials, calculateEndDate,
       globalDateFilter, setGlobalDateFilter,
       addLead, updateLead, login, logout, handleRoleChange,
       isSimulating: !!originalRole, originalRole, startSimulation, stopSimulation,

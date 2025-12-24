@@ -35,6 +35,7 @@ export interface ClassItem {
   link?: string; // Meeting link for online
   startDate?: string; // ISO Date YYYY-MM-DD
   endDate?: string;   // ISO Date YYYY-MM-DD
+  totalSessions?: number; // NEW: Total number of sessions for the course
   offDays?: string[]; // List of ISO dates where class is cancelled/shifted
   extraSessions?: { date: string; note?: string }[]; // NEW: List of rescheduled/extra sessions (ISO DateTime)
 }
