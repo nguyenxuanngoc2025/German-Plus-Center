@@ -16,8 +16,27 @@ const removeAccents = (str: string) => {
     .toLowerCase();
 };
 
+// Helper: Get Icon & Color for Notification Type
+const getNotificationStyle = (type: string) => {
+    switch (type) {
+        case 'debt': return { icon: 'warning', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' };
+        case 'schedule': return { icon: 'edit_calendar', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100' };
+        case 'success': return { icon: 'check_circle', color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-100' };
+        default: return { icon: 'info', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' };
+    }
+};
+
+// Helper: Format relative time
+const timeAgo = (dateStr: string) => {
+    const diff = Math.floor((new Date().getTime() - new Date(dateStr).getTime()) / 1000); // seconds
+    if (diff < 60) return 'Vừa xong';
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    return `${Math.floor(diff / 86400)} ngày trước`;
+};
+
 const Header: React.FC<HeaderProps> = ({ title }) => {
-  const { students, leads, classes, tuition } = useData();
+  const { students, leads, classes, tuition, notifications, markAllAsRead, markAsRead } = useData();
   const navigate = useNavigate();
   
   // Search State
@@ -25,6 +44,11 @@ const Header: React.FC<HeaderProps> = ({ title }) => {
   const [showResults, setShowResults] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Notification State
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   // Keyboard Shortcut '/'
   useEffect(() => {
@@ -35,6 +59,7 @@ const Header: React.FC<HeaderProps> = ({ title }) => {
       }
       if (e.key === 'Escape') {
         setShowResults(false);
+        setShowNotifications(false);
         searchInputRef.current?.blur();
       }
     };
@@ -47,6 +72,9 @@ const Header: React.FC<HeaderProps> = ({ title }) => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
         setShowResults(false);
+      }
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -117,6 +145,11 @@ const Header: React.FC<HeaderProps> = ({ title }) => {
       navigate(path, { state });
       setShowResults(false);
       setSearchTerm('');
+  };
+
+  const handleNotificationClick = (id: string) => {
+      markAsRead(id);
+      // Optional: Add navigation logic based on type later
   };
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
@@ -265,10 +298,83 @@ const Header: React.FC<HeaderProps> = ({ title }) => {
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
-          <button className="relative p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-            <span className="material-symbols-outlined text-2xl">notifications</span>
-            <span className="absolute top-2 right-2 size-2 bg-secondary rounded-full border-2 border-white dark:border-[#1a2233]"></span>
-          </button>
+          
+          {/* Notification Center */}
+          <div className="relative" ref={notificationRef}>
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <span className={`material-symbols-outlined text-2xl ${unreadCount > 0 ? 'text-slate-700 dark:text-slate-300' : ''}`}>notifications</span>
+                {unreadCount > 0 && (
+                    <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full ring-2 ring-white dark:ring-[#1a2233] animate-pulse"></span>
+                )}
+              </button>
+
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                  <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white dark:bg-[#1e293b] rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
+                      {/* Dropdown Header */}
+                      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                          <h3 className="font-bold text-slate-900 dark:text-white">Thông báo</h3>
+                          {unreadCount > 0 && (
+                              <button onClick={markAllAsRead} className="text-xs font-medium text-primary hover:underline">
+                                  Đánh dấu đã đọc
+                              </button>
+                          )}
+                      </div>
+
+                      {/* Notification List */}
+                      <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                          {notifications.length === 0 ? (
+                              <div className="p-8 text-center text-slate-500 dark:text-slate-400">
+                                  <span className="material-symbols-outlined text-4xl mb-2 opacity-30">notifications_off</span>
+                                  <p className="text-sm">Không có thông báo mới.</p>
+                              </div>
+                          ) : (
+                              <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                                  {notifications.map(notif => {
+                                      const style = getNotificationStyle(notif.type);
+                                      return (
+                                          <div 
+                                            key={notif.id} 
+                                            onClick={() => handleNotificationClick(notif.id)}
+                                            className={`p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer flex gap-3 ${notif.isRead ? 'opacity-60 grayscale-[0.3]' : 'bg-white dark:bg-[#1e293b]'}`}
+                                          >
+                                              <div className={`size-9 rounded-full shrink-0 flex items-center justify-center ${style.bg} ${style.color} border ${style.border}`}>
+                                                  <span className="material-symbols-outlined text-lg">{style.icon}</span>
+                                              </div>
+                                              <div className="flex-1 min-w-0">
+                                                  <div className="flex justify-between items-start mb-0.5">
+                                                      <p className={`text-sm ${notif.isRead ? 'font-medium text-slate-700 dark:text-slate-300' : 'font-bold text-slate-900 dark:text-white'}`}>
+                                                          {notif.title}
+                                                      </p>
+                                                      {!notif.isRead && <span className="size-2 rounded-full bg-primary mt-1.5 shrink-0"></span>}
+                                                  </div>
+                                                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug line-clamp-2 mb-1.5">
+                                                      {notif.message}
+                                                  </p>
+                                                  <span className="text-[10px] text-slate-400 font-medium">
+                                                      {timeAgo(notif.timestamp)}
+                                                  </span>
+                                              </div>
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+                          )}
+                      </div>
+                      
+                      {/* Footer */}
+                      <div className="p-2 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center">
+                          <button className="text-xs font-bold text-primary hover:text-primary-dark transition-colors">
+                              Xem tất cả
+                          </button>
+                      </div>
+                  </div>
+              )}
+          </div>
+
           <button className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
             <span className="material-symbols-outlined text-2xl">chat_bubble</span>
           </button>

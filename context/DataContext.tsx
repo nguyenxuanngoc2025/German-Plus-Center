@@ -1,6 +1,6 @@
 
 import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
-import { Lead, Student, ClassItem, Tuition, FinanceRecord, Staff, Document, SystemSettings, TestResult, AttendanceStatus, AttendanceRecord, PermissionKey } from '../types';
+import { Lead, Student, ClassItem, Tuition, FinanceRecord, Staff, Document, SystemSettings, TestResult, AttendanceStatus, AttendanceRecord, PermissionKey, Notification } from '../types';
 import { MOCK_LEADS, MOCK_STUDENTS, MOCK_CLASSES, MOCK_TUITION, MOCK_FINANCE, MOCK_STAFF, MOCK_DOCUMENTS } from '../constants';
 
 export type { PermissionKey };
@@ -81,6 +81,7 @@ interface DataContextType {
   staff: Staff[];
   documents: Document[];
   settings: SystemSettings;
+  notifications: Notification[]; // ADDED
   isAuthenticated: boolean;
   currentUser: UserInfo | null;
   
@@ -127,6 +128,11 @@ interface DataContextType {
   addClass: (classData: Omit<ClassItem, 'id' | 'students' | 'progress' | 'status'>, initialStudentIds: string[], initialLeadIds: string[]) => void;
   updateClass: (id: string, updates: Partial<ClassItem>) => void;
   
+  // Notification Actions
+  addNotification: (title: string, message: string, type: 'debt' | 'schedule' | 'success' | 'info') => void;
+  markAsRead: (id: string) => void;
+  markAllAsRead: () => void;
+
   // Dynamic Scheduling
   cancelClassSession: (classId: string, date: string) => { success: boolean; message: string } | undefined;
   moveClassSession: (classId: string, oldDateStr: string, newDateStr: string) => { success: boolean; message: string } | undefined;
@@ -164,6 +170,37 @@ const generateMockAttendance = (): AttendanceRecord[] => {
         });
     }
     return history;
+};
+
+// Mock Notification Generator
+const generateMockNotifications = (): Notification[] => {
+    const now = new Date();
+    return [
+        {
+            id: 'n1',
+            title: 'Nhắc nợ',
+            message: 'Học viên Đỗ Chi quá hạn đóng tiền 5 ngày.',
+            type: 'debt',
+            timestamp: new Date(now.getTime() - 1000 * 60 * 30).toISOString(), // 30 mins ago
+            isRead: false
+        },
+        {
+            id: 'n2',
+            title: 'Lịch học thay đổi',
+            message: 'Lớp Tiếng Đức A1 - K24 đã dời lịch buổi 20/10.',
+            type: 'schedule',
+            timestamp: new Date(now.getTime() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
+            isRead: false
+        },
+        {
+            id: 'n3',
+            title: 'Hoàn thành học phí',
+            message: 'Học viên Nguyễn Văn An đã hoàn thành 100% học phí.',
+            type: 'success',
+            timestamp: new Date(now.getTime() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
+            isRead: true
+        }
+    ];
 };
 
 // --- CORE SCHEDULING HELPER ---
@@ -209,6 +246,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [documents, setDocuments] = useState<Document[]>(MOCK_DOCUMENTS);
   const [discrepancies, setDiscrepancies] = useState<Discrepancy[]>([]);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>(generateMockNotifications()); // Init Mock Notifs
   
   // --- SETTINGS STATE ---
   const [settings, setSettingsState] = useState<SystemSettings>(() => {
@@ -284,36 +322,63 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
   }, [students]);
 
+  // --- NOTIFICATION HELPER ---
+  const addNotification = (title: string, message: string, type: 'debt' | 'schedule' | 'success' | 'info') => {
+      const newNotif: Notification = {
+          id: `notif-${Date.now()}`,
+          title,
+          message,
+          type,
+          timestamp: new Date().toISOString(),
+          isRead: false
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+  };
+
   // --- AUTO-CLEANUP & BACKGROUND JOBS ---
   useEffect(() => {
       if (!isAuthenticated) return;
 
       const runAutoCleanup = () => {
-          // 1. Data Integrity Check (Discrepancy between Cached & Real)
+          // 1. Data Integrity Check
           const issues: Discrepancy[] = [];
-          
           students.forEach(student => {
               const studentTuition = tuition.filter(t => t.studentId === student.id);
               const realDebt = studentTuition.reduce((sum, t) => sum + t.remainingAmount, 0);
               const cached = student.cachedBalance !== undefined ? student.cachedBalance : realDebt; 
-              
               if (cached !== realDebt) {
-                  issues.push({
-                      studentId: student.id,
-                      studentName: student.name,
-                      cached: cached,
-                      calculated: realDebt
-                  });
+                  issues.push({ studentId: student.id, studentName: student.name, cached: cached, calculated: realDebt });
               }
           });
           setDiscrepancies(issues);
+
+          // 2. SCENARIO 1: AUTOMATIC DEBT CHECK (Cron Job Simulation)
+          // Scan for overdue items and alert if found.
+          // Note: In a real app, this runs on server daily. Here, we run it periodically but dedupe notifications.
+          const overdueItems = tuition.filter(t => t.remainingAmount > 0 && new Date(t.dueDate) < new Date());
+          if (overdueItems.length > 0) {
+              const latestOverdue = overdueItems[0];
+              const studentName = students.find(s => s.id === latestOverdue.studentId)?.name || 'Học viên';
+              const notifTitle = "Cảnh báo Công nợ";
+              
+              // Only add if we haven't added a debt notification in the last 1 minute (simulation throttle)
+              const hasRecent = notifications.some(n => n.type === 'debt' && (new Date().getTime() - new Date(n.timestamp).getTime() < 60000));
+              
+              if (!hasRecent) {
+                  if (overdueItems.length === 1) {
+                      addNotification(notifTitle, `Học viên ${studentName} đang quá hạn khoản thu ${latestOverdue.description}.`, 'debt');
+                  } else {
+                      addNotification(notifTitle, `Hiện có ${overdueItems.length} khoản thu đã quá hạn cần xử lý.`, 'debt');
+                  }
+              }
+          }
       };
 
       runAutoCleanup();
-      const interval = setInterval(runAutoCleanup, 60000);
+      const interval = setInterval(runAutoCleanup, 60000); // Check every minute
       return () => clearInterval(interval);
 
-  }, [students, tuition, isAuthenticated]);
+  }, [students, tuition, isAuthenticated, notifications]);
 
   // --- DIAGNOSTICS & E2E TESTING ---
   const runSystemDiagnostics = async () => {
@@ -461,6 +526,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       lastActivity: 'Vừa xong',
     };
     setLeads(prev => [newLead, ...prev]);
+    
+    // SCENARIO 3: TRIGGER NEW LEAD NOTIFICATION
+    addNotification('Lead mới', `Khách hàng tiềm năng ${newLead.name} vừa được thêm từ nguồn ${newLead.source}.`, 'info');
+    
     return id; // Return ID for chaining
   };
 
@@ -519,19 +588,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const newEndDateStr = calculateEndDate(cls.startDate, cls.totalSessions, daysPart, updatedOffDays);
 
       // 4. Calculate how many sessions remain after the cancelled date
-      // For message purpose only: Count valid sessions from dateStr+1 to newEndDateStr
       const cancelledDate = new Date(dateStr);
       const newEndDate = new Date(newEndDateStr);
-      let remainingCount = 0;
       
-      // We can reuse logic or simple iteration here for the alert
-      // ... (omitted specific count logic for brevity as end date is the key)
-
       // 5. Update Class
       updateClass(classId, {
           endDate: newEndDateStr,
           offDays: updatedOffDays
       });
+
+      // SCENARIO 2: TRIGGER SCHEDULE NOTIFICATION
+      addNotification('Lịch học thay đổi', `Lớp ${cls.name} đã BÁO NGHỈ buổi học ngày ${cancelledDate.toLocaleDateString('vi-VN')}. Lịch đã được tự động lùi.`, 'schedule');
 
       return { 
           success: true, 
@@ -557,11 +624,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       // 3. Update Class
-      // Note: If this is just a reschedule (swap), we don't extend end date.
       updateClass(classId, {
           offDays: updatedOffDays,
           extraSessions: updatedExtraSessions
       });
+
+      // SCENARIO 2: TRIGGER SCHEDULE NOTIFICATION
+      const newDateObj = new Date(newDateStr);
+      addNotification('Thay đổi lịch học', `Lớp ${cls.name} đã DỜI LỊCH sang ${newDateObj.toLocaleString('vi-VN')}.`, 'schedule');
 
       return {
           success: true,
@@ -610,12 +680,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: true, message: "Settings updated" };
   };
 
+  // Notification Actions
+  const markAsRead = (id: string) => {
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  };
+
+  const markAllAsRead = () => {
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  };
+
   const getStudentBalance = (studentId: string) => 0;
   const getClassCapacity = (classId: string) => ({ current: 0, max: 0, isFull: false });
 
   return (
     <DataContext.Provider value={{
-      leads, students, classes, tuition, finance, staff, documents, settings,
+      leads, students, classes, tuition, finance, staff, documents, settings, notifications,
       isAuthenticated, currentUser, discrepancies, testResults, reconcileData, runSystemDiagnostics, calculateFinancials, calculateEndDate,
       globalDateFilter, setGlobalDateFilter,
       addLead, updateLead, login, logout, handleRoleChange,
@@ -624,6 +703,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       convertLeadToStudent, enrollStudent, removeStudentFromClass, recordPayment, recordStudentPayment, deleteTuition, updateTuition, 
       addClass, updateClass, cancelClassSession, moveClassSession,
       addStaff, addFinanceRecord, saveAttendance, updateStudentNote, addDocument, deleteDocument,
+      addNotification, markAsRead, markAllAsRead,
       updateSettings, getStudentBalance, getClassCapacity
     }}>
       {children}

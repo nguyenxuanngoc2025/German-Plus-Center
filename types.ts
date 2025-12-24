@@ -168,6 +168,17 @@ export interface TestResult {
     timestamp: string;
 }
 
+// NEW: Notification Interface
+export interface Notification {
+    id: string;
+    title: string; // e.g., "Nhắc nợ", "Thay đổi lịch"
+    message: string;
+    type: 'debt' | 'schedule' | 'success' | 'info';
+    timestamp: string; // ISO string or relative time
+    isRead: boolean;
+    link?: string; // Optional deep link
+}
+
 // Define granular permission keys
 export type PermissionKey = 
     | 'view_dashboard'
