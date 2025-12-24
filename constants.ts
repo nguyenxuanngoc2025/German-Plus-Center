@@ -59,6 +59,18 @@ export const MOCK_LEADS: Lead[] = [
     tags: [],
     targetLevel: 'B2',
     learningMode: 'online'
+  },
+  {
+    id: "6",
+    name: "Anna Do",
+    source: "Facebook Ads",
+    status: "fail",
+    failReason: "Giá cao",
+    avatar: "AD",
+    lastActivity: "2 ngày trước",
+    tags: [],
+    targetLevel: 'A1',
+    learningMode: 'offline'
   }
 ];
 
@@ -72,11 +84,13 @@ export const MOCK_CLASSES: ClassItem[] = [
     mode: "offline",
     teacher: "Cô Muller",
     teacherAvatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuD3HDBVzlVNdovtMhAxnajnOIgLF4qiLQAR4DFCnwisHnSf1sHaiAm8RfQY5ZybRmaw8Ku3lU9oBYAZl3hH3lkX2XlEz82UqqpjnJLk2XHZOznYE66omM3NZ6DKqVgIScQXV98pQbv5wHgtyiy-YtpzrKY3d5docbByjLa2og4oPlG1Foyor-hSKatBU9EC_xwITmLRm-icO1DxtHTDGzw3aJrqx984RyIuGkighSJ8yEb1eimTDFJEKSm3ypxDjlHjM_ZqVsL8dZzw",
-    students: 12,
+    students: 6, // Updated to match mock students below
     maxStudents: 15,
-    progress: 80,
+    progress: 45, // Will be recalculated
     tuitionFee: 5000000,
-    location: "102 Ngô Quyền, Hà Đông, Hà Nội"
+    location: "102 Ngô Quyền, Hà Đông, Hà Nội",
+    startDate: "2023-10-01",
+    endDate: "2023-12-30"
   },
   {
     id: "C002",
@@ -87,11 +101,13 @@ export const MOCK_CLASSES: ClassItem[] = [
     mode: "online",
     teacher: "Thầy Schmidt",
     teacherAvatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuCRrvP6zLviuDePpSE95VMNkUzU7F77fYpPEuQDowFGK-e2cC8mdvsvkiJBP_GW34qEfv8YB80G6pf5swHJTDUd2Hc5ejYr8WGxhkjS8JhZd36OZpwNLmNdTONRqCMmZYju0ejEK2DPRaXm59OAqRtUPeET3NFZ2pAytCiiSimS8YWs5V24qqDT3DtkTWVwfOpt3a0xrkIGp0EiDOe5FD6Yt6T0oLDrr5ZN461x7zbCfBhAa1SBchmYCwlTPMYRkr8A8Kez1fHD7Pqp",
-    students: 5,
+    students: 0,
     maxStudents: 15,
-    progress: 33,
+    progress: 0,
     tuitionFee: 6500000,
-    link: "https://meet.google.com/abc-xyz-123"
+    link: "https://meet.google.com/abc-xyz-123",
+    startDate: "2023-12-01",
+    endDate: "2024-03-01"
   },
   {
     id: "C003",
@@ -106,7 +122,9 @@ export const MOCK_CLASSES: ClassItem[] = [
     maxStudents: 15,
     progress: 100,
     tuitionFee: 8000000,
-    location: "102 Ngô Quyền, Hà Đông, Hà Nội"
+    location: "102 Ngô Quyền, Hà Đông, Hà Nội",
+    startDate: "2023-06-01",
+    endDate: "2023-09-01"
   },
   {
     id: "C004",
@@ -117,11 +135,13 @@ export const MOCK_CLASSES: ClassItem[] = [
     mode: "online",
     teacher: "Thầy Klein",
     teacherAvatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuCgBxYCLB4KATVZ5ozjahmfET_eBjwGtfS7_K8WBBIvrGjk7pdJ2IdgdUDJBPIpOQHI9kvy55llr0f1sAXX_NLU4NoCRC61-WaTU8N1eqoRT2MmdZjjcsSZO7smUyNIGGUYwY4_2HrRBnIUaKWwObzJ_gQDNJn-vffG269ytmLnKj4c5-_FO1LwbZ26JQT8hW89jSWItyZXYSc8R4uTlwHZM1lqBOPPd0CkU8BogDrfqaLWMNFpw3lnjIDDiXZz56XbPFZtnwm08Z4Y",
-    students: 11,
+    students: 1,
     maxStudents: 12,
     progress: 91,
     tuitionFee: 10000000,
-    link: "https://meet.google.com/def-uvw-456"
+    link: "https://meet.google.com/def-uvw-456",
+    startDate: "2023-08-01",
+    endDate: "2023-11-30"
   }
 ];
 
@@ -138,7 +158,7 @@ export const MOCK_STUDENTS: Student[] = [
     location: "Hà Nội",
     classId: "C001",
     enrollmentDate: "2023-01-10",
-    cachedBalance: 0 // Correct
+    cachedBalance: 0
   },
   {
     id: "HV002",
@@ -152,7 +172,78 @@ export const MOCK_STUDENTS: Student[] = [
     location: "Đà Nẵng",
     classId: "C003",
     enrollmentDate: "2023-02-15",
-    cachedBalance: 6000000 // INTENTIONAL ERROR: Real remaining is 4,000,000 (8m total - 4m paid). Stored 6m implies a 2m discrepancy.
+    cachedBalance: 6000000 
+  },
+  // Added more students to C001 for consistency
+  {
+    id: "HV003",
+    name: "Nguyen Van C",
+    email: "c.nguyen@test.com",
+    phone: "0987654321",
+    avatar: "NC",
+    status: "active",
+    code: "23A1003",
+    dob: "01/01/2001",
+    location: "Hà Nội",
+    classId: "C001",
+    enrollmentDate: "2023-10-02",
+    cachedBalance: 0
+  },
+  {
+    id: "HV004",
+    name: "Pham Thi D",
+    email: "d.pham@test.com",
+    phone: "0912345679",
+    avatar: "PD",
+    status: "active",
+    code: "23A1004",
+    dob: "05/05/2002",
+    location: "Hà Nội",
+    classId: "C001",
+    enrollmentDate: "2023-10-02",
+    cachedBalance: 2500000
+  },
+  {
+    id: "HV005",
+    name: "Hoang Van E",
+    email: "e.hoang@test.com",
+    phone: "0901112233",
+    avatar: "HE",
+    status: "active",
+    code: "23A1005",
+    dob: "10/10/2000",
+    location: "Hà Nội",
+    classId: "C001",
+    enrollmentDate: "2023-10-03",
+    cachedBalance: 0
+  },
+  {
+    id: "HV006",
+    name: "Do Thi F",
+    email: "f.do@test.com",
+    phone: "0944556677",
+    avatar: "DF",
+    status: "active",
+    code: "23A1006",
+    dob: "20/12/1999",
+    location: "Hà Nội",
+    classId: "C001",
+    enrollmentDate: "2023-10-05",
+    cachedBalance: 5000000
+  },
+  {
+    id: "HV007",
+    name: "Vu Van G",
+    email: "g.vu@test.com",
+    phone: "0977889900",
+    avatar: "VG",
+    status: "active",
+    code: "23A1007",
+    dob: "15/08/2001",
+    location: "Hà Nội",
+    classId: "C001",
+    enrollmentDate: "2023-10-05",
+    cachedBalance: 0
   }
 ];
 

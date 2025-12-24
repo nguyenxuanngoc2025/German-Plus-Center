@@ -209,9 +209,10 @@ const Calendar: React.FC = () => {
 
       return (
           <div className="flex-1 flex flex-col bg-white dark:bg-[#1a202c] border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
-              <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700">
-                  {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'].map(d => (
-                      <div key={d} className="py-3 text-center text-xs font-bold uppercase text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50">
+              {/* Calendar Header with standardized style */}
+              <div className="grid grid-cols-7 border-b border-[#EDF2F7] dark:border-slate-700">
+                  {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((d, i) => (
+                      <div key={d} className={`py-3 text-center text-xs font-semibold uppercase ${i === 6 ? 'text-[#E53E3E]' : 'text-[#4A5568]'} dark:text-slate-400 bg-white dark:bg-[#1a202c]`}>
                           {d}
                       </div>
                   ))}
@@ -220,6 +221,7 @@ const Calendar: React.FC = () => {
                   {days.map((d, idx) => {
                       const dayEvents = getEventsForDay(d.date);
                       const isToday = new Date().toDateString() === d.date.toDateString();
+                      const isSunday = d.date.getDay() === 0;
                       
                       // Limit display to 3 events per day
                       const displayEvents = dayEvents.slice(0, 3);
@@ -229,10 +231,17 @@ const Calendar: React.FC = () => {
                           <div 
                             key={idx} 
                             onClick={() => { setCurrentDate(d.date); setViewMode('day'); }}
-                            className={`min-h-[140px] border-b border-r border-slate-100 dark:border-slate-700/50 p-2 transition-all cursor-pointer relative group hover:bg-slate-50 dark:hover:bg-slate-800 ${d.type !== 'current' ? 'bg-slate-50/30 dark:bg-slate-900/30 text-slate-300' : ''}`}
+                            className={`
+                                min-h-[140px] border-b border-r border-[#EDF2F7] dark:border-slate-700/50 p-2 transition-all cursor-pointer relative group 
+                                ${d.type !== 'current' ? 'text-slate-300 dark:text-slate-600' : ''}
+                                ${isSunday ? 'bg-[#FFF5F5] dark:bg-red-900/5' : 'hover:bg-[#F7FAFC] dark:hover:bg-slate-800'}
+                            `}
                           >
                               <div className="flex justify-between items-start mb-2">
-                                <span className={`text-xs font-bold size-7 flex items-center justify-center rounded-full transition-colors ${isToday ? 'bg-primary text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 group-hover:bg-slate-200 dark:group-hover:bg-slate-700'}`}>
+                                <span className={`
+                                    text-xs flex items-center justify-center size-7 rounded-full transition-colors font-medium
+                                    ${isToday ? 'border border-[#1e3a8a] text-[#1e3a8a] font-bold' : isSunday && d.type === 'current' ? 'text-[#E53E3E]' : ''}
+                                `}>
                                     {d.day}
                                 </span>
                                 <div className="flex items-center gap-1">

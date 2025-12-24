@@ -16,7 +16,7 @@ type DrillState = {
 
 const FinanceDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { finance, tuition, students, classes, currentUser, discrepancies, reconcileData } = useData();
+  const { finance, tuition, students, classes, currentUser, discrepancies, reconcileData, calculateFinancials } = useData();
   
   // --- FILTER STATE ---
   const [dateFilter, setDateFilter] = useState('this_month'); // this_month, last_month, this_quarter, this_year, all
@@ -27,80 +27,50 @@ const FinanceDashboard: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
 
   // --- HELPER: DATE LOGIC ---
-  const isInRange = (dateStr: string) => {
-      if (dateFilter === 'all') return true;
-      const date = new Date(dateStr);
+  const dateRange = useMemo(() => {
       const now = new Date();
-      
+      let start: Date | undefined;
+      let end: Date | undefined;
+
       switch (dateFilter) {
           case 'this_month':
-              return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+              start = new Date(now.getFullYear(), now.getMonth(), 1);
+              end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+              break;
           case 'last_month':
-              const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-              return date.getMonth() === lastMonth.getMonth() && date.getFullYear() === lastMonth.getFullYear();
+              start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+              end = new Date(now.getFullYear(), now.getMonth(), 0);
+              break;
           case 'this_quarter':
               const q = Math.floor(now.getMonth() / 3);
-              const dateQ = Math.floor(date.getMonth() / 3);
-              return q === dateQ && date.getFullYear() === now.getFullYear();
+              start = new Date(now.getFullYear(), q * 3, 1);
+              end = new Date(now.getFullYear(), q * 3 + 3, 0);
+              break;
           case 'this_year':
-              return date.getFullYear() === now.getFullYear();
+              start = new Date(now.getFullYear(), 0, 1);
+              end = new Date(now.getFullYear(), 11, 31);
+              break;
           default:
-              return true;
+              start = undefined;
+              end = undefined;
       }
-  };
+      return { start, end };
+  }, [dateFilter]);
 
-  // --- FILTERED DATASETS ---
-  const filteredFinance = useMemo(() => {
-      return finance.filter(f => {
-          // Date Check
-          if (!isInRange(f.date)) return false;
-          // Class Check (Link via Student)
-          if (classFilter !== 'all' && f.studentId) {
-              const student = students.find(s => s.id === f.studentId);
-              if (student?.classId !== classFilter) return false;
-          }
-          return true;
-      });
-  }, [finance, students, dateFilter, classFilter]);
-
-  // SINGLE SOURCE OF TRUTH: Debt is always current outstanding state, NOT filtered by date range of invoice creation.
-  // We only filter by Class if selected.
-  const currentDebtors = useMemo(() => {
-      return tuition.filter(t => {
-          // Must have remaining amount
-          if (t.remainingAmount <= 0) return false;
-          
-          // Class Check
-          if (classFilter !== 'all') {
-              const student = students.find(s => s.id === t.studentId);
-              if (student?.classId !== classFilter) return false;
-          }
-          return true;
-      });
-  }, [tuition, students, classFilter]);
-
-  // --- SCORECARD CALCULATIONS ---
-  
-  // 1. Total Revenue (Real Income in selected period)
-  const totalRevenue = useMemo(() => 
-      filteredFinance.filter(f => f.type === 'income').reduce((sum, f) => sum + f.amount, 0),
-  [filteredFinance]);
-
-  // 2. Total Expenses (in selected period)
-  const totalExpenses = useMemo(() => 
-      filteredFinance.filter(f => f.type === 'expense').reduce((sum, f) => sum + f.amount, 0),
-  [filteredFinance]);
-
-  // 3. Accounts Receivable (Total Current Outstanding Debt) - Fixed Logic
-  const totalDebt = useMemo(() => 
-      currentDebtors.reduce((sum, t) => sum + t.remainingAmount, 0),
-  [currentDebtors]);
-
-  // 4. Projected Profit = (Revenue + Debt) - Expense
-  const projectedProfit = (totalRevenue + totalDebt) - totalExpenses;
+  // --- USE CENTRALIZED CALCULATION ---
+  // Note: calculateFinancials already handles null dates as "All Time"
+  const stats = useMemo(() => {
+      return calculateFinancials(dateRange.start, dateRange.end);
+  }, [dateRange, calculateFinancials, finance, tuition]);
 
   // --- CHART DATA PREPARATION ---
   const chartData = useMemo(() => {
+      const filteredFinance = finance.filter(f => {
+          if (!dateRange.start || !dateRange.end) return true;
+          const d = new Date(f.date);
+          return d >= dateRange.start && d <= dateRange.end;
+      });
+
       // Group by Label based on filter
       const dataMap: Record<string, { income: number, expense: number }> = {};
       
@@ -128,7 +98,7 @@ const FinanceDashboard: React.FC = () => {
           // Simple sort logic assumption
           return a.name.localeCompare(b.name, undefined, { numeric: true }); 
       });
-  }, [filteredFinance, dateFilter]);
+  }, [finance, dateFilter, dateRange]);
 
   const formatCurrency = (val: number) => {
       return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
@@ -248,7 +218,7 @@ const FinanceDashboard: React.FC = () => {
                     <div className="absolute right-[-10px] top-[-10px] p-6 bg-emerald-50 dark:bg-emerald-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                     <div className="relative z-10">
                         <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Tổng Doanh thu</p>
-                        <h3 className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalRevenue)}</h3>
+                        <h3 className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{formatCurrency(stats.revenue)}</h3>
                         <p className="text-xs text-slate-400 mt-1">Đã thực thu trong kỳ</p>
                     </div>
                     <div className="absolute bottom-4 right-4 p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-lg">
@@ -261,7 +231,7 @@ const FinanceDashboard: React.FC = () => {
                     <div className="absolute right-[-10px] top-[-10px] p-6 bg-red-50 dark:bg-red-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                     <div className="relative z-10">
                         <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Tổng Chi phí</p>
-                        <h3 className="text-2xl font-extrabold text-red-600 dark:text-red-400">{formatCurrency(totalExpenses)}</h3>
+                        <h3 className="text-2xl font-extrabold text-red-600 dark:text-red-400">{formatCurrency(stats.expense)}</h3>
                         <p className="text-xs text-slate-400 mt-1">Đã thực chi trong kỳ</p>
                     </div>
                     <div className="absolute bottom-4 right-4 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg">
@@ -277,7 +247,7 @@ const FinanceDashboard: React.FC = () => {
                     <div className="absolute right-[-10px] top-[-10px] p-6 bg-orange-50 dark:bg-orange-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                     <div className="relative z-10">
                         <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Phải thu (Công nợ)</p>
-                        <h3 className="text-2xl font-extrabold text-orange-600 dark:text-orange-400">{formatCurrency(totalDebt)}</h3>
+                        <h3 className="text-2xl font-extrabold text-orange-600 dark:text-orange-400">{formatCurrency(stats.debt)}</h3>
                         <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
                             Tổng nợ hiện tại
                             <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
@@ -293,8 +263,8 @@ const FinanceDashboard: React.FC = () => {
                     <div className="absolute right-[-10px] top-[-10px] p-6 bg-blue-50 dark:bg-blue-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
                     <div className="relative z-10">
                         <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Lợi nhuận dự kiến</p>
-                        <h3 className={`text-2xl font-extrabold ${projectedProfit >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-500'}`}>
-                            {formatCurrency(projectedProfit)}
+                        <h3 className={`text-2xl font-extrabold ${stats.profit >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-500'}`}>
+                            {formatCurrency(stats.profit + stats.debt)}
                         </h3>
                         <p className="text-xs text-slate-400 mt-1">(Thu + Nợ) - Chi</p>
                     </div>

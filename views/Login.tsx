@@ -142,7 +142,7 @@ const Login: React.FC = () => {
             </div>
 
             {/* Submit Button */}
-            <button type="submit" className="flex w-full items-center justify-center rounded-xl bg-primary hover:bg-blue-700 text-white text-base font-bold h-12 mt-2 transition-all shadow-sm hover:shadow-md active:scale-[0.98]">
+            <button type="submit" className="flex w-full items-center justify-center rounded-xl bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white text-base font-bold h-12 mt-2 transition-all shadow-sm hover:shadow-md active:scale-[0.98]">
                 Đăng nhập
             </button>
           </form>

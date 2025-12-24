@@ -121,7 +121,7 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                       <span className="material-symbols-outlined text-[18px]">location_on</span> {formData.location}
                     </p>
                     <div className="mt-4 flex flex-wrap justify-center sm:justify-start gap-3">
-                      <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-hover shadow-sm shadow-primary/30 transition-all">
+                      <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark active:bg-primary-active active:shadow-inner shadow-sm shadow-primary/30 transition-all">
                         <span className="material-symbols-outlined text-[18px]">edit_square</span>
                         Chỉnh sửa hồ sơ
                       </button>
@@ -424,7 +424,7 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
             </button>
             <button 
                 onClick={() => onSave && onSave(formData)}
-                className="px-5 py-2.5 rounded-lg bg-primary hover:bg-primary-hover text-white font-medium text-sm shadow-sm shadow-primary/30 transition-all flex items-center gap-2"
+                className="px-5 py-2.5 rounded-lg bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white font-medium text-sm shadow-sm shadow-primary/30 transition-all flex items-center gap-2"
             >
               <span className="material-symbols-outlined text-[18px]">save</span>
               Lưu thay đổi

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="vi" class="light">
   <head>
@@ -24,28 +25,57 @@
         darkMode: "class",
         theme: {
           extend: {
+            // SCALING SYSTEM: Refined for 14.5px root (SaaS Gold Standard)
+            // Using rem units ensures everything scales with the HTML font size
+            fontSize: {
+                'xs': ['0.8rem', { lineHeight: '1.1rem' }],    // ~11.6px
+                'sm': ['0.92rem', { lineHeight: '1.35rem' }],   // ~13.3px
+                'base': ['1rem', { lineHeight: '1.5rem' }],     // 14.5px (Standard Body)
+                'lg': ['1.15rem', { lineHeight: '1.75rem' }],   // ~16.7px
+                'xl': ['1.35rem', { lineHeight: '1.85rem' }],   // ~19.5px
+                '2xl': ['1.6rem', { lineHeight: '2.1rem' }],    // ~23px
+                '3xl': ['2rem', { lineHeight: '2.5rem' }],      // ~29px
+                '4xl': ['2.5rem', { lineHeight: '1' }],         // ~36px
+            },
+            spacing: {
+                '18': '4.5rem', // 72px (at 16px) -> 65px (at 14.5px)
+                '22': '5.5rem', // 88px (at 16px) -> 80px (at 14.5px)
+            },
             colors: {
-              primary: "#1152d4",
-              "primary-dark": "#0d3ca0",
-              secondary: "#f97316",
-              "background-light": "#f6f6f8",
-              "background-dark": "#101622",
+              primary: "#1A365D", // Navy Blue - Main Brand
+              "primary-dark": "#2A4365", // Hover
+              "primary-active": "#102A4C", // Active
+              secondary: "#F97316", // Orange - Accent Actions
+              "background-light": "#F8FAFC", // Slate 50
+              "background-dark": "#0f172a", // Dark Mode BG
               surface: "#ffffff",
             },
             fontFamily: {
               display: ["Lexend", "sans-serif"],
               body: ["Inter", "sans-serif"],
             },
+            boxShadow: {
+              'subtle': '0 2px 5px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)', 
+              'card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
+            }
           },
         },
       };
     </script>
     <style>
+      /* GLOBAL SCALE ADJUSTMENT */
+      html {
+        font-size: 14.5px; /* 10% reduction from standard 16px */
+      }
+      
       body {
         font-family: 'Lexend', sans-serif;
       }
       .material-symbols-outlined {
         font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        /* Ensure icons scale with text */
+        font-size: 1.25em; 
+        line-height: 1;
       }
       .material-symbols-outlined.fill {
         font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -58,6 +88,11 @@
       .no-scrollbar {
           -ms-overflow-style: none;  /* IE and Edge */
           scrollbar-width: none;  /* Firefox */
+      }
+      
+      /* Base inputs scaling */
+      input, select, textarea, button {
+          font-size: 1rem; 
       }
     </style>
   <script type="importmap">
@@ -73,7 +108,7 @@
 }
 </script>
 </head>
-  <body class="bg-background-light text-slate-900 h-screen overflow-hidden">
+  <body class="bg-background-light text-slate-700 h-screen overflow-hidden antialiased selection:bg-orange-100 selection:text-orange-900 text-base">
     <div id="root"></div>
   </body>
 </html>

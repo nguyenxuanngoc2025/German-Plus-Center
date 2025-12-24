@@ -92,62 +92,62 @@ const Students: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark">
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark text-base">
       <Header title="Quản lý Học viên" />
       
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
+      <div className="flex-1 overflow-y-auto p-6 md:p-8">
+        <div className="max-w-[1600px] mx-auto flex flex-col gap-8">
             
             {/* Top Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white dark:bg-[#1a202c] p-5 rounded-xl border border-[#e5e7eb] dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-[#e5e7eb] dark:border-slate-700 shadow-subtle flex items-center justify-between">
                     <div>
-                        <p className="text-[#616f89] dark:text-slate-400 text-sm font-medium">Tổng học viên</p>
-                        <h3 className="text-[#111318] dark:text-white text-2xl font-bold mt-1">{students.length}</h3>
+                        <p className="text-[#616f89] dark:text-slate-400 text-sm font-bold uppercase tracking-wide">Tổng học viên</p>
+                        <h3 className="text-[#111318] dark:text-white text-4xl font-bold mt-1">{students.length}</h3>
                     </div>
-                    <div className="size-12 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-primary dark:text-blue-300">
-                        <span className="material-symbols-outlined text-[24px]">groups</span>
+                    <div className="size-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-primary dark:text-blue-300">
+                        <span className="material-symbols-outlined text-[32px]">groups</span>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-[#1a202c] p-5 rounded-xl border border-[#e5e7eb] dark:border-slate-700 shadow-sm flex items-center justify-between">
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-[#e5e7eb] dark:border-slate-700 shadow-subtle flex items-center justify-between">
                     <div>
-                        <p className="text-[#616f89] dark:text-slate-400 text-sm font-medium">Đang theo học</p>
-                        <h3 className="text-[#111318] dark:text-white text-2xl font-bold mt-1">
+                        <p className="text-[#616f89] dark:text-slate-400 text-sm font-bold uppercase tracking-wide">Đang theo học</p>
+                        <h3 className="text-[#111318] dark:text-white text-4xl font-bold mt-1">
                             {students.filter(s => s.status === 'active').length}
                         </h3>
                     </div>
-                    <div className="size-12 rounded-lg bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-green-600 dark:text-green-300">
-                        <span className="material-symbols-outlined text-[24px]">school</span>
+                    <div className="size-14 rounded-2xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-green-600 dark:text-green-300">
+                        <span className="material-symbols-outlined text-[32px]">school</span>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-[#1a202c] p-5 rounded-xl border border-[#e5e7eb] dark:border-slate-700 shadow-sm flex items-center justify-between">
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-[#e5e7eb] dark:border-slate-700 shadow-subtle flex items-center justify-between">
                     <div>
-                        <p className="text-[#616f89] dark:text-slate-400 text-sm font-medium">Nợ học phí</p>
-                        <h3 className="text-[#111318] dark:text-white text-2xl font-bold mt-1 text-red-600">
+                        <p className="text-[#616f89] dark:text-slate-400 text-sm font-bold uppercase tracking-wide">Nợ học phí</p>
+                        <h3 className="text-[#111318] dark:text-white text-4xl font-bold mt-1 text-red-600">
                             {students.filter(s => (s.balance || 0) > 0).length}
                         </h3>
                     </div>
-                    <div className="size-12 rounded-lg bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-red-600 dark:text-red-300">
-                        <span className="material-symbols-outlined text-[24px]">warning</span>
+                    <div className="size-14 rounded-2xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-red-600 dark:text-red-300">
+                        <span className="material-symbols-outlined text-[32px]">warning</span>
                     </div>
                 </div>
             </div>
 
             {/* Toolbar */}
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                 <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="relative w-full md:w-64">
-                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white dark:bg-[#1a202c] p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+                 <div className="flex items-center gap-4 w-full md:w-auto flex-1">
+                    <div className="relative w-full md:w-80">
+                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[22px]">search</span>
                         <input 
                             type="text" 
                             placeholder="Tìm tên, mã học viên..." 
-                            className="w-full h-10 pl-10 pr-4 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-[#1a202c] text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 text-[#111318] dark:text-white"
+                            className="w-full h-11 pl-11 pr-4 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-base focus:outline-none focus:ring-2 focus:ring-primary/50 text-[#111318] dark:text-white"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
                     <select 
-                        className="h-10 px-3 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-[#1a202c] text-sm text-[#111318] dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
+                        className="h-11 px-4 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-base text-[#111318] dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer min-w-[180px]"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
                     >
@@ -165,26 +165,26 @@ const Students: React.FC = () => {
                         onChange={setVisibleColumns}
                     />
                     {hasPermission('export_data') && (
-                        <button className="flex items-center justify-center gap-2 px-4 h-10 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-[#1a202c] text-[#111318] dark:text-white text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                        <button className="flex items-center justify-center gap-2 px-5 h-11 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#111318] dark:text-white text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                             <span className="material-symbols-outlined text-[20px]">download</span>
                             Xuất Excel
                         </button>
                     )}
                     {hasPermission('edit_students') && (
-                        <button className="flex items-center justify-center gap-2 px-4 h-10 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-medium shadow-md shadow-primary/20 transition-colors">
+                        <button className="flex items-center justify-center gap-2 px-5 h-11 rounded-lg bg-secondary hover:bg-orange-600 text-white text-sm font-bold shadow-sm transition-colors">
                             <span className="material-symbols-outlined text-[20px]">add</span>
-                            Thêm học viên
+                            Thêm mới
                         </button>
                     )}
                  </div>
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-[#1a202c] border border-[#e5e7eb] dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-[#1a202c] border border-[#e5e7eb] dark:border-slate-700 rounded-xl shadow-card overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-[#f8fafc] dark:bg-slate-900 border-b border-[#e5e7eb] dark:border-slate-700 text-xs uppercase text-[#616f89] dark:text-slate-400 font-semibold tracking-wider">
+                            <tr className="bg-[#F1F5F9] dark:bg-slate-900 border-b border-[#e5e7eb] dark:border-slate-700 text-sm uppercase text-[#616f89] dark:text-slate-400 font-bold tracking-wider">
                                 {visibleColumns.includes('name') && (
                                     <th onClick={() => handleSort('name')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Học viên {renderSortIcon('name')}</div>
@@ -210,38 +210,38 @@ const Students: React.FC = () => {
                                 )}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#e5e7eb] dark:divide-slate-700">
+                        <tbody className="divide-y divide-[#e5e7eb] dark:divide-slate-700 text-base">
                             {filteredStudents.map((student) => (
-                                <tr key={student.id} onClick={() => setSelectedStudent(student)} className="group hover:bg-[#f8fafc] dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                                <tr key={student.id} onClick={() => setSelectedStudent(student)} className="group even:bg-[#F8FAFC] dark:even:bg-slate-800/50 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">
                                     {visibleColumns.includes('name') && (
                                         <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-4">
                                                 <Avatar 
                                                     src={student.avatar} 
                                                     name={student.name} 
-                                                    className="size-10 border border-slate-200 dark:border-slate-700 shadow-sm"
+                                                    className="size-12 border border-slate-200 dark:border-slate-700 shadow-sm text-sm"
                                                     detail={student} // Pass full student object for Mini Profile
                                                 />
                                                 <div>
-                                                    <p className="text-sm font-semibold text-[#111318] dark:text-white">{student.name}</p>
-                                                    <p className="text-xs text-[#616f89] dark:text-slate-400">{student.code} • {student.phone}</p>
+                                                    <p className="text-base font-bold text-[#111318] dark:text-white">{student.name}</p>
+                                                    <p className="text-sm text-[#616f89] dark:text-slate-400 mt-0.5">{student.code} • {student.phone}</p>
                                                 </div>
                                             </div>
                                         </td>
                                     )}
                                     {visibleColumns.includes('class') && (
                                         <td className="px-6 py-4">
-                                            <span className="text-sm text-[#111318] dark:text-slate-200">{student.currentClass}</span>
+                                            <span className="text-base text-[#111318] dark:text-slate-200 font-medium">{student.currentClass}</span>
                                         </td>
                                     )}
                                     {visibleColumns.includes('status') && (
                                         <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                                            <span className={`inline-flex items-center px-3 py-1 rounded text-xs font-bold uppercase tracking-wide border ${
                                                 student.status === 'active' 
-                                                ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800' 
+                                                ? 'bg-green-50 text-green-700 border-green-200' 
                                                 : student.status === 'suspended'
-                                                ? 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800'
-                                                : 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
+                                                ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                                : 'bg-gray-100 text-gray-600 border-gray-200'
                                             }`}>
                                                 {student.status === 'active' ? 'Đang học' : student.status === 'suspended' ? 'Bảo lưu' : 'Đã nghỉ'}
                                             </span>
@@ -251,15 +251,15 @@ const Students: React.FC = () => {
                                         <td className="px-6 py-4" onClick={(e) => { e.stopPropagation(); if(hasPermission('view_finance')) handleQuickPayment(student); }}>
                                             {(student.balance || 0) > 0 ? (
                                                 <div 
-                                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 ${hasPermission('view_finance') ? 'hover:bg-red-100 dark:hover:bg-red-900/30 cursor-pointer group/balance' : ''}`}
+                                                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 ${hasPermission('view_finance') ? 'hover:bg-red-100 dark:hover:bg-red-900/30 cursor-pointer group/balance' : ''}`}
                                                     title={hasPermission('view_finance') ? "Click để đóng phí" : "Nợ học phí"}
                                                 >
-                                                    <span className="text-sm font-bold">{formatCurrency(student.balance || 0)}</span>
-                                                    {hasPermission('view_finance') && <span className="material-symbols-outlined text-[16px] opacity-0 group-hover/balance:opacity-100 transition-opacity">payments</span>}
+                                                    <span className="text-base font-bold">{formatCurrency(student.balance || 0)}</span>
+                                                    {hasPermission('view_finance') && <span className="material-symbols-outlined text-[18px] opacity-0 group-hover/balance:opacity-100 transition-opacity">payments</span>}
                                                 </div>
                                             ) : (
-                                                <span className="text-sm font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
-                                                    <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                                                <span className="text-base font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
+                                                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
                                                     Hoàn thành
                                                 </span>
                                             )}
@@ -272,12 +272,12 @@ const Students: React.FC = () => {
                                                     onClick={(e) => { e.stopPropagation(); setSelectedStudent(student); }}
                                                     className="p-2 text-[#616f89] hover:text-primary hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Chi tiết"
                                                 >
-                                                    <span className="material-symbols-outlined text-[20px]">visibility</span>
+                                                    <span className="material-symbols-outlined text-[24px]">visibility</span>
                                                 </button>
                                                 
                                                 {hasPermission('edit_students') && (
                                                     <button className="p-2 text-[#616f89] hover:text-primary hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Chỉnh sửa">
-                                                        <span className="material-symbols-outlined text-[20px]">edit</span>
+                                                        <span className="material-symbols-outlined text-[24px]">edit</span>
                                                     </button>
                                                 )}
                                                 
@@ -287,7 +287,7 @@ const Students: React.FC = () => {
                                                     className="p-2 text-[#616f89] hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors flex items-center justify-center" 
                                                     title={`Gọi cho ${student.name}`}
                                                 >
-                                                    <span className="material-symbols-outlined text-[20px]">call</span>
+                                                    <span className="material-symbols-outlined text-[24px]">call</span>
                                                 </a>
                                             </div>
                                         </td>
@@ -299,16 +299,16 @@ const Students: React.FC = () => {
                 </div>
                 
                 {/* Pagination */}
-                <div className="px-6 py-4 border-t border-[#e5e7eb] dark:border-slate-700 flex items-center justify-between">
+                <div className="px-6 py-4 border-t border-[#e5e7eb] dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-800">
                     <p className="text-sm text-[#616f89] dark:text-slate-400">
                         Hiển thị <span className="font-medium text-[#111318] dark:text-white">1</span> đến <span className="font-medium text-[#111318] dark:text-white">{filteredStudents.length}</span> trong tổng số <span className="font-medium text-[#111318] dark:text-white">{students.length}</span> kết quả
                     </p>
                     <div className="flex gap-2">
-                        <button className="px-3 py-1 rounded border border-[#e5e7eb] dark:border-slate-700 text-sm text-[#616f89] disabled:opacity-50" disabled>Trước</button>
-                        <button className="px-3 py-1 rounded bg-primary text-white text-sm font-medium">1</button>
-                        <button className="px-3 py-1 rounded border border-[#e5e7eb] dark:border-slate-700 text-sm text-[#616f89] hover:bg-slate-50 dark:hover:bg-slate-800">2</button>
-                        <button className="px-3 py-1 rounded border border-[#e5e7eb] dark:border-slate-700 text-sm text-[#616f89] hover:bg-slate-50 dark:hover:bg-slate-800">3</button>
-                        <button className="px-3 py-1 rounded border border-[#e5e7eb] dark:border-slate-700 text-sm text-[#616f89] hover:bg-slate-50 dark:hover:bg-slate-800">Tiếp</button>
+                        <button className="px-4 py-2 rounded-lg border border-[#e5e7eb] dark:border-slate-700 text-sm font-medium text-[#616f89] disabled:opacity-50 hover:bg-slate-50" disabled>Trước</button>
+                        <button className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-bold">1</button>
+                        <button className="px-4 py-2 rounded-lg border border-[#e5e7eb] dark:border-slate-700 text-sm font-medium text-[#616f89] hover:bg-slate-50 dark:hover:bg-slate-800">2</button>
+                        <button className="px-4 py-2 rounded-lg border border-[#e5e7eb] dark:border-slate-700 text-sm font-medium text-[#616f89] hover:bg-slate-50 dark:hover:bg-slate-800">3</button>
+                        <button className="px-4 py-2 rounded-lg border border-[#e5e7eb] dark:border-slate-700 text-sm font-medium text-[#616f89] hover:bg-slate-50 dark:hover:bg-slate-800">Tiếp</button>
                     </div>
                 </div>
             </div>

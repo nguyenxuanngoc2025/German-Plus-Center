@@ -22,6 +22,8 @@ import Login from './views/Login';
 import Documents from './views/Documents';
 import Calendar from './views/Calendar';
 import DebtManagement from './views/DebtManagement'; 
+import SystemDiagnostics from './views/SystemDiagnostics';
+// Reports import removed
 import { DataProvider, useData, PermissionKey } from './context/DataContext';
 
 const RoleRoute: React.FC<{ permission: PermissionKey }> = ({ permission }) => {
@@ -79,9 +81,12 @@ const MainLayout: React.FC = () => {
 
             <Route element={<RoleRoute permission="edit_settings" />}>
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/diagnostics" element={<SystemDiagnostics />} />
                 <Route path="/staff" element={<StaffList />} />
                 <Route path="/staff/create" element={<CreateStaff />} />
             </Route>
+
+            {/* Reports Route Removed - Merged into Dashboard */}
 
             {/* Common Routes */}
             <Route path="/calendar" element={<Calendar />} />

@@ -3,8 +3,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
 import { UserRole } from '../context/DataContext';
+import { useNavigate } from 'react-router-dom';
 
 const Settings: React.FC = () => {
+  const navigate = useNavigate();
   const { currentUser, startSimulation, settings, updateSettings } = useData();
 
   // --- Branding State ---
@@ -18,6 +20,7 @@ const Settings: React.FC = () => {
   const [timezone, setTimezone] = useState(settings.timezone);
   const [dateFormat, setDateFormat] = useState(settings.dateFormat);
   const [notifications, setNotifications] = useState(settings.notifications);
+  const [debugMode, setDebugMode] = useState(settings.debugMode || false);
 
   // --- Theme State ---
   const [theme, setTheme] = useState<'light' | 'dark'>(settings.theme);
@@ -44,6 +47,7 @@ const Settings: React.FC = () => {
     setTheme(settings.theme);
     setExportFormat(settings.exportFormat);
     setAutoBackup(settings.autoBackup);
+    setDebugMode(settings.debugMode || false);
     
     document.documentElement.className = settings.theme;
   }, [settings]);
@@ -70,11 +74,6 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleCopyApiKey = () => {
-    navigator.clipboard.writeText('sk_live_********************8f9a');
-    alert('Đã sao chép API Key vào bộ nhớ tạm!');
-  };
-
   const handleSave = async () => {
     if (isSaving) return;
     setIsSaving(true);
@@ -90,7 +89,8 @@ const Settings: React.FC = () => {
             notifications, 
             theme, 
             exportFormat, 
-            autoBackup
+            autoBackup,
+            debugMode
         });
 
         if (result.success) {
@@ -132,13 +132,17 @@ const Settings: React.FC = () => {
                         <p className="text-slate-500 dark:text-slate-400 mt-1">Quản lý cấu hình toàn bộ hệ thống {systemName}</p>
                     </div>
                     <div className="flex gap-3">
-                        <button className="px-4 py-2 bg-white dark:bg-[#1a202c] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm">
-                            Hủy bỏ
+                        <button 
+                            onClick={() => navigate('/diagnostics')}
+                            className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold hover:bg-purple-100 transition-colors flex items-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-[18px]">bug_report</span>
+                            System Diagnostics
                         </button>
                         <button 
                             onClick={handleSave}
                             disabled={isSaving}
-                            className={`px-6 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark transition-colors shadow-md shadow-primary/20 flex items-center gap-2 ${isSaving ? 'opacity-70 cursor-wait' : ''}`}
+                            className={`px-6 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark active:bg-primary-active active:shadow-inner transition-all shadow-md shadow-primary/20 flex items-center gap-2 ${isSaving ? 'opacity-70 cursor-wait' : ''}`}
                         >
                             {isSaving ? (
                                 <>
@@ -156,7 +160,7 @@ const Settings: React.FC = () => {
                 </div>
             </div>
 
-            {/* LIVE ROLE SIMULATION MODE - REFINED */}
+            {/* LIVE ROLE SIMULATION MODE */}
             <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl border-2 border-dashed border-blue-200 dark:border-slate-700 p-6 relative overflow-hidden">
                 <div className="relative z-10 flex flex-col gap-4 items-center text-center">
                     <div>
@@ -192,16 +196,12 @@ const Settings: React.FC = () => {
                         
                         <button 
                             onClick={handleActivateSimulation}
-                            className="w-full md:w-auto px-6 h-10 bg-[#1A365D] hover:bg-[#2c4c7c] text-white rounded-[8px] text-sm font-bold shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap"
+                            className="w-full md:w-auto px-6 h-10 bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white rounded-[8px] text-sm font-bold shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 whitespace-nowrap"
                         >
                             <span className="material-symbols-outlined text-[18px]">play_circle</span>
                             Kích hoạt mô phỏng
                         </button>
                     </div>
-                    
-                    <p className="text-xs text-slate-400 dark:text-slate-500 italic">
-                        Chọn vai trò để xem giao diện tương ứng từ góc nhìn của họ
-                    </p>
                 </div>
             </div>
 
@@ -313,7 +313,7 @@ const Settings: React.FC = () => {
                                     <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none text-lg">expand_more</span>
                                 </div>
                             </div>
-                            <div className="md:col-span-2 pt-2">
+                            <div className="md:col-span-2 pt-2 flex flex-col gap-3">
                                 <label className="flex items-center gap-3 cursor-pointer group">
                                     <input 
                                         type="checkbox" 
@@ -324,6 +324,18 @@ const Settings: React.FC = () => {
                                     <div className="flex flex-col">
                                         <span className="text-sm font-medium text-slate-900 dark:text-white">Bật thông báo hệ thống</span>
                                         <span className="text-xs text-slate-500 group-hover:text-primary transition-colors">Gửi email thông báo khi có học viên mới hoặc thanh toán thành công.</span>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={debugMode}
+                                        onChange={(e) => setDebugMode(e.target.checked)}
+                                        className="w-5 h-5 rounded border-slate-300 text-red-500 focus:ring-red-500 transition-colors cursor-pointer" 
+                                    />
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-medium text-slate-900 dark:text-white">Chế độ Debug cho Admin</span>
+                                        <span className="text-xs text-slate-500 group-hover:text-red-500 transition-colors">Hiển thị log lỗi kỹ thuật và công cụ kiểm thử trên giao diện.</span>
                                     </div>
                                 </label>
                             </div>

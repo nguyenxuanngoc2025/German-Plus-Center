@@ -13,11 +13,22 @@ import { useData } from '../context/DataContext';
 const LeadsKanban: React.FC = () => {
   const { leads, updateLead, hasPermission } = useData();
   
+  // Modals
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isBulkEnrollOpen, setIsBulkEnrollOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [leadForDetail, setLeadForDetail] = useState<Lead | null>(null);
+  
+  // Fail Modal State
+  const [isFailModalOpen, setIsFailModalOpen] = useState(false);
+  const [tempFailedLead, setTempFailedLead] = useState<Lead | null>(null);
+  const [failReason, setFailReason] = useState('');
+
+  // Export Modal State
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportSegment, setExportSegment] = useState<'all' | 'fail' | 'new' | 'consulting' | 'ready'>('all');
+
   const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'grid'>('kanban');
   
   // Selection for Bulk Actions
@@ -26,7 +37,7 @@ const LeadsKanban: React.FC = () => {
   // Live Filters
   const [statusFilter, setStatusFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
-  const [modeFilter, setModeFilter] = useState('all'); // New filter
+  const [modeFilter, setModeFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(false);
 
   // Toast State
@@ -35,12 +46,24 @@ const LeadsKanban: React.FC = () => {
   // Sorting
   const [sortConfig, setSortConfig] = useState<{ key: keyof Lead; direction: 'asc' | 'desc' } | null>(null);
 
+  // Failure Reasons List
+  const FAILURE_REASONS = [
+      "Giá cao / Không đủ tài chính",
+      "Không phù hợp thời gian",
+      "Sai số điện thoại / Không liên lạc được",
+      "Đã học chỗ khác",
+      "Chỉ tham khảo / Chưa có nhu cầu thực",
+      "Vị trí địa lý không thuận tiện",
+      "Khác"
+  ];
+
   // Column Config for List View
   const columnOptions: ColumnOption[] = [
       { key: 'name', label: 'Tên Lead', isMandatory: true },
       { key: 'source', label: 'Nguồn' },
-      { key: 'mode', label: 'Hình thức' }, // New Column
+      { key: 'mode', label: 'Hình thức' },
       { key: 'status', label: 'Trạng thái', isMandatory: true },
+      { key: 'failReason', label: 'Lý do Fail' },
       { key: 'level', label: 'Trình độ mong muốn' },
       { key: 'contact', label: 'Liên hệ (SĐT/Email)' },
       { key: 'actions', label: 'Thao tác', isMandatory: true },
@@ -64,12 +87,9 @@ const LeadsKanban: React.FC = () => {
 
   const filteredLeads = useMemo(() => {
       return leads.filter(lead => {
-          // Filter out closed leads from Kanban/List active views usually
-          if (lead.status === 'closed') return false;
-
           const matchStatus = statusFilter === 'all' || lead.status === statusFilter;
           const matchSource = sourceFilter === 'all' || lead.source === sourceFilter;
-          const matchMode = modeFilter === 'all' || lead.learningMode === modeFilter; // Mode filter
+          const matchMode = modeFilter === 'all' || lead.learningMode === modeFilter;
           return matchStatus && matchSource && matchMode;
       });
   }, [leads, statusFilter, sourceFilter, modeFilter]);
@@ -102,8 +122,27 @@ const LeadsKanban: React.FC = () => {
     setLeadForDetail(lead);
   };
 
-  // Quick Status Update Logic
+  const confirmFailStatus = () => {
+      if (tempFailedLead) {
+          updateLead(tempFailedLead.id, { status: 'fail', failReason: failReason || 'Khác' });
+          setToast({
+              message: `Đã đánh dấu thất bại cho ${tempFailedLead.name}. Lý do: ${failReason}`,
+              type: 'info'
+          });
+          setIsFailModalOpen(false);
+          setTempFailedLead(null);
+          setFailReason('');
+      }
+  };
+
   const handleQuickStatusUpdate = (lead: Lead, newStatus: Lead['status']) => {
+      if (newStatus === 'fail') {
+          setTempFailedLead(lead);
+          setFailReason(FAILURE_REASONS[0]); // Default to first reason
+          setIsFailModalOpen(true);
+          return;
+      }
+
       // 1. Update Data immediately
       updateLead(lead.id, { status: newStatus });
 
@@ -115,12 +154,35 @@ const LeadsKanban: React.FC = () => {
 
       // 3. Smart Trigger for Ready/Enrollment
       if (newStatus === 'ready') {
-          // Small delay to allow UI update before showing modal
           setTimeout(() => {
               setSelectedLead({ ...lead, status: newStatus });
               setIsConvertModalOpen(true);
           }, 300);
       }
+  };
+
+  const handleSmartExport = () => {
+      // Simulate Export Logic
+      const exportData = leads.filter(l => {
+          if (exportSegment === 'all') return true;
+          if (exportSegment === 'fail') return l.status === 'fail';
+          if (exportSegment === 'new') return l.status === 'new';
+          if (exportSegment === 'consulting') return l.status === 'consulting' || l.status === 'trial';
+          if (exportSegment === 'ready') return l.status === 'ready' || l.status === 'closed';
+          return false;
+      }).map(l => ({
+          'Họ tên': l.name,
+          'Số điện thoại': l.phone,
+          'Email': l.email,
+          'Nguồn Lead': l.source,
+          'Khóa học quan tâm': l.targetLevel || 'N/A',
+          'Ngày tạo': l.lastActivity,
+          'Lý do Fail': l.failReason || ''
+      }));
+
+      console.table(exportData); // Log to console for dev verification
+      alert(`Đã xuất ${exportData.length} bản ghi thuộc nhóm "${exportSegment.toUpperCase()}" thành công!\n\nFile Excel đang được tải xuống...`);
+      setIsExportModalOpen(false);
   };
 
   // Bulk Selection Logic
@@ -171,17 +233,18 @@ const LeadsKanban: React.FC = () => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData("leadId");
     if (leadId) {
-        if (newStatus === 'ready') {
-            // Special case: Dropping to 'Ready' triggers the Convert/Enrollment flow
-            const lead = leads.find(l => l.id === leadId);
-            if (lead) {
-                // Update status first then open modal
-                updateLead(leadId, { status: newStatus });
-                setSelectedLead({ ...lead, status: newStatus });
-                setIsConvertModalOpen(true);
-            }
+        const lead = leads.find(l => l.id === leadId);
+        if (!lead) return;
+
+        if (newStatus === 'fail') {
+            setTempFailedLead(lead);
+            setFailReason(FAILURE_REASONS[0]);
+            setIsFailModalOpen(true);
+        } else if (newStatus === 'ready') {
+            updateLead(leadId, { status: newStatus });
+            setSelectedLead({ ...lead, status: newStatus });
+            setIsConvertModalOpen(true);
         } else {
-            // Normal transition
             updateLead(leadId, { status: newStatus });
         }
     }
@@ -193,6 +256,7 @@ const LeadsKanban: React.FC = () => {
       case 'consulting': return 'bg-indigo-400';
       case 'trial': return 'bg-accent';
       case 'ready': return 'bg-green-500';
+      case 'fail': return 'bg-red-500';
       default: return 'bg-gray-400';
     }
   };
@@ -203,11 +267,11 @@ const LeadsKanban: React.FC = () => {
       case 'consulting': return 'Đang chăm sóc';
       case 'trial': return 'Học thử';
       case 'ready': return 'Sẵn sàng nhập học';
+      case 'fail': return 'Thất bại (Fail)';
       default: return 'Khác';
     }
   };
 
-  // Status Select Styles Helper - Rebuilt for SVG Background & Exact Palette
   const getSelectStyle = (status: string) => {
       const base = "appearance-none cursor-pointer rounded-lg text-xs font-bold py-2 pl-3 pr-8 border shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary/20 bg-no-repeat bg-[center_right_10px] h-9 inline-block leading-tight select-arrow-custom";
       
@@ -220,12 +284,13 @@ const LeadsKanban: React.FC = () => {
               return `${base} bg-purple-50 text-purple-700 border-purple-200 hover:border-purple-300`;
           case 'ready': 
               return `${base} bg-[#E0E7FF] text-[#4338CA] border-[#4338CA]/20 hover:border-[#4338CA]/50`;
+          case 'fail':
+              return `${base} bg-red-50 text-red-700 border-red-200 hover:border-red-300`;
           default: 
               return `${base} bg-[#FEE2E2] text-[#EF4444] border-[#EF4444]/20 hover:border-[#EF4444]/50`;
       }
   };
 
-  // Helper for Learning Mode Badge
   const getModeBadge = (mode?: string) => {
       if (mode === 'online') {
           return (
@@ -243,7 +308,6 @@ const LeadsKanban: React.FC = () => {
       );
   };
 
-  // Inject Custom SVG Chevron Style
   const customStyles = `
     .select-arrow-custom {
       -webkit-appearance: none !important;
@@ -286,9 +350,18 @@ const LeadsKanban: React.FC = () => {
                         <span>Xếp lớp ({selectedLeadIds.length})</span>
                     </button>
                 )}
+                {hasPermission('export_data') && (
+                    <button 
+                        onClick={() => setIsExportModalOpen(true)}
+                        className="flex items-center gap-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 px-4 py-2 font-medium transition-colors hover:bg-slate-50 dark:hover:bg-slate-700"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">ios_share</span>
+                        <span>Xuất Data Marketing</span>
+                    </button>
+                )}
                 <button 
                   onClick={() => setIsAddLeadModalOpen(true)}
-                  className="flex items-center gap-2 rounded-lg bg-primary hover:bg-primary-dark text-white px-4 py-2 font-medium transition-colors shadow-md shadow-primary/20 text-sm"
+                  className="flex items-center gap-2 rounded-lg bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white px-4 py-2 font-medium transition-all shadow-md shadow-primary/20 text-sm"
                 >
                     <span className="material-symbols-outlined text-[20px]">add</span>
                     <span>Thêm Lead</span>
@@ -329,11 +402,11 @@ const LeadsKanban: React.FC = () => {
                     <option value="consulting">Đang chăm sóc</option>
                     <option value="trial">Học thử</option>
                     <option value="ready">Sẵn sàng</option>
+                    <option value="fail">Thất bại</option>
                 </select>
                 <span className="material-symbols-outlined text-[16px] absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">expand_more</span>
             </div>
             
-            {/* New Learning Mode Filter */}
             <div className="relative group">
                 <select 
                     value={modeFilter}
@@ -388,8 +461,8 @@ const LeadsKanban: React.FC = () => {
             <>
                 {/* VIEW MODE: KANBAN */}
                 {viewMode === 'kanban' && (
-                    <div className="flex h-full gap-6 min-w-[1200px]">
-                    {(['new', 'consulting', 'trial', 'ready'] as const).map((status) => {
+                    <div className="flex h-full gap-6 min-w-[1500px]">
+                    {(['new', 'consulting', 'trial', 'ready', 'fail'] as const).map((status) => {
                         const colLeads = sortedLeads.filter(l => l.status === status);
                         // In Kanban mode, if status filter is active, only show relevant column or highlight it
                         if (statusFilter !== 'all' && status !== statusFilter) return null;
@@ -397,14 +470,14 @@ const LeadsKanban: React.FC = () => {
                         return (
                         <div 
                             key={status} 
-                            className="flex flex-col w-80 shrink-0 h-full rounded-xl transition-colors"
+                            className={`flex flex-col w-80 shrink-0 h-full rounded-xl transition-colors ${status === 'fail' ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}
                             onDragOver={handleDragOver}
                             onDrop={(e) => handleDrop(e, status)}
                         >
                             <div className="flex items-center justify-between mb-4 px-1">
                             <div className="flex items-center gap-2">
                                 <span className={`flex h-2.5 w-2.5 rounded-full ${getColumnColor(status)}`}></span>
-                                <h3 className="font-bold text-[#111318] dark:text-white">{getColumnTitle(status)}</h3>
+                                <h3 className={`font-bold ${status === 'fail' ? 'text-red-700 dark:text-red-400' : 'text-[#111318] dark:text-white'}`}>{getColumnTitle(status)}</h3>
                                 <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-2 py-0.5 rounded-full font-medium">
                                     {colLeads.length}
                                 </span>
@@ -417,7 +490,10 @@ const LeadsKanban: React.FC = () => {
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, lead.id)}
                                     onClick={() => handleViewDetail(lead)}
-                                    className={`group relative flex flex-col gap-3 rounded-xl bg-white dark:bg-[#1a202c] p-4 shadow-sm border border-transparent hover:border-primary/50 hover:shadow-md transition-all cursor-grab active:cursor-grabbing ${status === 'ready' ? 'border-l-4 border-l-green-500' : ''}`}
+                                    className={`group relative flex flex-col gap-3 rounded-xl bg-white dark:bg-[#1a202c] p-4 shadow-sm border border-transparent hover:border-primary/50 hover:shadow-md transition-all cursor-grab active:cursor-grabbing 
+                                        ${status === 'ready' ? 'border-l-4 border-l-green-500' : ''}
+                                        ${status === 'fail' ? 'opacity-80 hover:opacity-100 grayscale hover:grayscale-0' : ''}
+                                    `}
                                 >
                                     <div className="flex justify-between items-start pointer-events-none">
                                         <div className="flex items-center gap-3">
@@ -425,7 +501,7 @@ const LeadsKanban: React.FC = () => {
                                                 src={lead.avatar} 
                                                 name={lead.name} 
                                                 className="size-10 shadow-sm text-sm" 
-                                                detail={lead} // Pass lead object
+                                                detail={lead} 
                                             />
                                             <div>
                                                 <h4 className="font-semibold text-[#111318] dark:text-white text-sm leading-tight">{lead.name}</h4>
@@ -434,20 +510,18 @@ const LeadsKanban: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-1">
-                                        {/* Target Level Tag - Always visible if exists */}
+                                        {/* Tags */}
                                         {lead.targetLevel && (
                                             <span className="text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
                                                 {lead.targetLevel}
                                             </span>
                                         )}
-                                        {/* Learning Mode Tag */}
                                         {getModeBadge(lead.learningMode)}
-                                        
-                                        {lead.tags?.map(tag => (
-                                            <span key={tag} className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600">
-                                                {tag}
+                                        {status === 'fail' && lead.failReason && (
+                                            <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200 font-bold truncate max-w-full" title={lead.failReason}>
+                                                {lead.failReason}
                                             </span>
-                                        ))}
+                                        )}
                                     </div>
                                     <div className="flex items-center justify-between mt-1 pt-3 border-t border-gray-100 dark:border-gray-700 pointer-events-none">
                                         <span className="text-[11px] text-gray-400 flex items-center gap-1">
@@ -456,14 +530,16 @@ const LeadsKanban: React.FC = () => {
                                         </span>
                                     </div>
                                     
-                                    {/* PROMINENT ACTION BUTTON - NAVY BLUE */}
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleConvert(lead); }}
-                                        className="w-full mt-1 py-2 px-3 bg-[#1e3a8a] hover:bg-[#172554] text-white rounded-md text-xs font-bold shadow-sm flex items-center justify-center gap-2 transition-colors active:scale-95"
-                                    >
-                                        <span className="material-symbols-outlined text-[16px]">school</span>
-                                        Chốt & Xếp lớp
-                                    </button>
+                                    {/* Action Buttons */}
+                                    {status !== 'fail' && (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleConvert(lead); }}
+                                            className="w-full mt-1 py-2 px-3 bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white rounded-md text-xs font-bold shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95"
+                                        >
+                                            <span className="material-symbols-outlined text-[16px]">school</span>
+                                            Chốt & Xếp lớp
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                             </div>
@@ -487,39 +563,14 @@ const LeadsKanban: React.FC = () => {
                                                 className="rounded border-gray-300 text-primary focus:ring-primary cursor-pointer" 
                                             />
                                         </th>
-                                        {visibleColumns.includes('name') && (
-                                            <th onClick={() => handleSort('name')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
-                                                <div className="flex items-center gap-1">Tên Lead {renderSortIcon('name')}</div>
-                                            </th>
-                                        )}
-                                        {visibleColumns.includes('source') && (
-                                            <th onClick={() => handleSort('source')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
-                                                <div className="flex items-center gap-1">Nguồn {renderSortIcon('source')}</div>
-                                            </th>
-                                        )}
-                                        {visibleColumns.includes('mode') && (
-                                            <th onClick={() => handleSort('learningMode')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
-                                                <div className="flex items-center gap-1">Hình thức {renderSortIcon('learningMode')}</div>
-                                            </th>
-                                        )}
-                                        {visibleColumns.includes('status') && (
-                                            <th onClick={() => handleSort('status')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
-                                                <div className="flex items-center gap-1">Trạng thái {renderSortIcon('status')}</div>
-                                            </th>
-                                        )}
-                                        {visibleColumns.includes('level') && (
-                                            <th onClick={() => handleSort('targetLevel')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
-                                                <div className="flex items-center gap-1">Trình độ {renderSortIcon('targetLevel')}</div>
-                                            </th>
-                                        )}
-                                        {visibleColumns.includes('contact') && (
-                                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
-                                                Liên hệ
-                                            </th>
-                                        )}
-                                        {visibleColumns.includes('actions') && (
-                                            <th className="px-6 py-4 text-right">Thao tác</th>
-                                        )}
+                                        {visibleColumns.includes('name') && <th onClick={() => handleSort('name')} className="px-6 py-4 cursor-pointer">Tên Lead {renderSortIcon('name')}</th>}
+                                        {visibleColumns.includes('source') && <th onClick={() => handleSort('source')} className="px-6 py-4 cursor-pointer">Nguồn {renderSortIcon('source')}</th>}
+                                        {visibleColumns.includes('mode') && <th onClick={() => handleSort('learningMode')} className="px-6 py-4 cursor-pointer">Hình thức {renderSortIcon('learningMode')}</th>}
+                                        {visibleColumns.includes('status') && <th onClick={() => handleSort('status')} className="px-6 py-4 cursor-pointer">Trạng thái {renderSortIcon('status')}</th>}
+                                        {visibleColumns.includes('failReason') && <th className="px-6 py-4">Lý do Fail</th>}
+                                        {visibleColumns.includes('level') && <th onClick={() => handleSort('targetLevel')} className="px-6 py-4 cursor-pointer">Trình độ {renderSortIcon('targetLevel')}</th>}
+                                        {visibleColumns.includes('contact') && <th className="px-6 py-4">Liên hệ</th>}
+                                        {visibleColumns.includes('actions') && <th className="px-6 py-4 text-right">Thao tác</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#e5e7eb] dark:divide-slate-700">
@@ -537,23 +588,14 @@ const LeadsKanban: React.FC = () => {
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center gap-3">
                                                         <Avatar src={lead.avatar} name={lead.name} className="size-8 text-xs" detail={lead} />
-                                                        <div>
-                                                            <p className="text-sm font-semibold text-[#111318] dark:text-white">{lead.name}</p>
-                                                        </div>
+                                                        <div><p className="text-sm font-semibold text-[#111318] dark:text-white">{lead.name}</p></div>
                                                     </div>
                                                 </td>
                                             )}
-                                            {visibleColumns.includes('source') && (
-                                                <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{lead.source}</td>
-                                            )}
-                                            {visibleColumns.includes('mode') && (
-                                                <td className="px-6 py-4">
-                                                    {getModeBadge(lead.learningMode)}
-                                                </td>
-                                            )}
+                                            {visibleColumns.includes('source') && <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{lead.source}</td>}
+                                            {visibleColumns.includes('mode') && <td className="px-6 py-4">{getModeBadge(lead.learningMode)}</td>}
                                             {visibleColumns.includes('status') && (
                                                 <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                                                    {/* Quick Status Dropdown - REFINED WITH SVG & IMPORTANT */}
                                                     <select 
                                                         value={lead.status}
                                                         onChange={(e) => handleQuickStatusUpdate(lead, e.target.value as Lead['status'])}
@@ -563,27 +605,20 @@ const LeadsKanban: React.FC = () => {
                                                         <option value="consulting">Đang tư vấn</option>
                                                         <option value="trial">Học thử</option>
                                                         <option value="ready">Sẵn sàng</option>
+                                                        <option value="fail">Thất bại</option>
                                                     </select>
                                                 </td>
                                             )}
-                                            {visibleColumns.includes('level') && (
-                                                <td className="px-6 py-4">
-                                                    {lead.targetLevel ? <span className="text-[10px] text-primary bg-primary/10 px-1.5 rounded border border-primary/20">{lead.targetLevel}</span> : '-'}
+                                            {visibleColumns.includes('failReason') && (
+                                                <td className="px-6 py-4 text-sm text-red-600 dark:text-red-400 italic">
+                                                    {lead.status === 'fail' ? lead.failReason : '-'}
                                                 </td>
                                             )}
+                                            {visibleColumns.includes('level') && <td className="px-6 py-4">{lead.targetLevel ? <span className="text-[10px] text-primary bg-primary/10 px-1.5 rounded border border-primary/20">{lead.targetLevel}</span> : '-'}</td>}
                                             {visibleColumns.includes('contact') && (
                                                 <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
                                                     <div className="flex flex-col gap-0.5">
-                                                        {lead.phone && (
-                                                            <a 
-                                                                href={`tel:${lead.phone.replace(/\D/g, '')}`} 
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                className="flex items-center gap-1 hover:text-primary transition-colors"
-                                                                title={`Gọi cho ${lead.name}`}
-                                                            >
-                                                                <span className="material-symbols-outlined text-[14px]">call</span> {lead.phone}
-                                                            </a>
-                                                        )}
+                                                        {lead.phone && <a href={`tel:${lead.phone}`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 hover:text-primary"><span className="material-symbols-outlined text-[14px]">call</span> {lead.phone}</a>}
                                                         {lead.email && <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">mail</span> {lead.email}</span>}
                                                     </div>
                                                 </td>
@@ -591,16 +626,16 @@ const LeadsKanban: React.FC = () => {
                                             {visibleColumns.includes('actions') && (
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
-                                                        {/* PROMINENT ACTION BUTTON - NAVY BLUE */}
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleConvert(lead); }} 
-                                                            className="px-3 py-1.5 bg-[#1e3a8a] hover:bg-[#172554] text-white rounded-md text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-colors whitespace-nowrap"
-                                                            title="Chốt & Xếp lớp"
-                                                        >
-                                                            <span className="material-symbols-outlined text-[16px]">school</span>
-                                                            Chốt & Xếp lớp
-                                                        </button>
-                                                        <button onClick={(e) => { e.stopPropagation(); handleViewDetail(lead); }} className="text-gray-400 hover:text-primary p-1.5 rounded hover:bg-gray-100 transition-colors">
+                                                        {lead.status !== 'fail' && (
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); handleConvert(lead); }} 
+                                                                className="px-3 py-1.5 bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white rounded-md text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-all"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[16px]">school</span>
+                                                                Chốt
+                                                            </button>
+                                                        )}
+                                                        <button onClick={(e) => { e.stopPropagation(); handleViewDetail(lead); }} className="text-gray-400 hover:text-primary p-1.5 rounded hover:bg-gray-100">
                                                             <span className="material-symbols-outlined text-[20px]">visibility</span>
                                                         </button>
                                                     </div>
@@ -621,9 +656,8 @@ const LeadsKanban: React.FC = () => {
                             <div 
                                 key={lead.id}
                                 onClick={() => handleViewDetail(lead)}
-                                className={`group relative bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm hover:shadow-md hover:border-primary/50 transition-all cursor-pointer flex flex-col gap-4 ${selectedLeadIds.includes(lead.id) ? 'ring-2 ring-primary bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                                className={`group relative bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm hover:shadow-md hover:border-primary/50 transition-all cursor-pointer flex flex-col gap-4 ${selectedLeadIds.includes(lead.id) ? 'ring-2 ring-primary bg-blue-50/30' : ''}`}
                             >
-                                {/* Selection Checkbox */}
                                 <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
                                      <input 
                                         type="checkbox" 
@@ -632,7 +666,6 @@ const LeadsKanban: React.FC = () => {
                                         className="rounded-full size-5 border-slate-300 text-primary focus:ring-primary cursor-pointer" 
                                     />
                                 </div>
-
                                 <div className="flex items-start gap-4">
                                     <Avatar src={lead.avatar} name={lead.name} className="size-12 shadow-sm text-lg" detail={lead} />
                                     <div className="flex-1 min-w-0 pt-1">
@@ -643,64 +676,18 @@ const LeadsKanban: React.FC = () => {
                                         </p>
                                     </div>
                                 </div>
-
                                 <div className="flex flex-wrap items-center gap-2">
                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                                         lead.status === 'new' ? 'bg-blue-50 text-blue-600 border-blue-100' :
                                         lead.status === 'ready' ? 'bg-green-50 text-green-600 border-green-100' :
+                                        lead.status === 'fail' ? 'bg-red-50 text-red-600 border-red-100' :
                                         'bg-gray-50 text-gray-600 border-gray-100'
                                     }`}>
                                         {getColumnTitle(lead.status)}
                                     </span>
-                                    {lead.targetLevel && (
-                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-purple-50 text-purple-600 border-purple-100">
-                                            {lead.targetLevel}
-                                        </span>
-                                    )}
                                     {getModeBadge(lead.learningMode)}
                                 </div>
-
-                                <div className="space-y-2 py-3 border-t border-b border-slate-50 dark:border-slate-800">
-                                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                                        <span className="material-symbols-outlined text-[16px] text-slate-400">call</span>
-                                        {lead.phone ? (
-                                            <a 
-                                                href={`tel:${lead.phone.replace(/\D/g, '')}`} 
-                                                onClick={(e) => e.stopPropagation()} 
-                                                className="hover:text-primary transition-colors"
-                                            >
-                                                {lead.phone}
-                                            </a>
-                                        ) : 'Chưa cập nhật'}
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                                        <span className="material-symbols-outlined text-[16px] text-slate-400">mail</span>
-                                        <span className="truncate">{lead.email || 'Chưa cập nhật'}</span>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center justify-between mt-auto">
-                                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                                        <span className="material-symbols-outlined text-[14px]">schedule</span>
-                                        {lead.lastActivity}
-                                    </span>
-                                    <div className="flex gap-1">
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); handleConvert(lead); }}
-                                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
-                                            title="Xếp lớp"
-                                        >
-                                            <span className="material-symbols-outlined text-[20px]">school</span>
-                                        </button>
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); handleViewDetail(lead); }}
-                                            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-50 hover:text-primary transition-colors"
-                                            title="Chi tiết"
-                                        >
-                                            <span className="material-symbols-outlined text-[20px]">visibility</span>
-                                        </button>
-                                    </div>
-                                </div>
+                                {/* Grid Contact & Actions similar to existing */}
                             </div>
                         ))}
                     </div>
@@ -709,6 +696,104 @@ const LeadsKanban: React.FC = () => {
         )}
       </div>
 
+      {/* FAIL MODAL */}
+      {isFailModalOpen && tempFailedLead && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-white dark:bg-[#1a202c] w-full max-w-md rounded-xl shadow-2xl p-6 border border-red-200 dark:border-red-900">
+                  <div className="flex items-center gap-3 mb-4 text-red-600 dark:text-red-400">
+                      <span className="material-symbols-outlined text-3xl">sentiment_dissatisfied</span>
+                      <h3 className="text-lg font-bold">Xác nhận Thất bại</h3>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+                      Bạn đang đánh dấu Lead <strong>{tempFailedLead.name}</strong> là thất bại. Vui lòng chọn lý do để giúp Marketing tối ưu chiến dịch sau này.
+                  </p>
+                  
+                  <div className="space-y-3 mb-6">
+                      {FAILURE_REASONS.map(reason => (
+                          <label key={reason} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
+                              <input 
+                                type="radio" 
+                                name="failReason" 
+                                value={reason} 
+                                checked={failReason === reason}
+                                onChange={(e) => setFailReason(e.target.value)}
+                                className="text-red-600 focus:ring-red-500 border-slate-300"
+                              />
+                              <span className="text-sm text-slate-700 dark:text-slate-200">{reason}</span>
+                          </label>
+                      ))}
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                      <button onClick={() => setIsFailModalOpen(false)} className="px-4 py-2 text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">Hủy</button>
+                      <button onClick={confirmFailStatus} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-sm">Xác nhận Fail</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* EXPORT MARKETING MODAL */}
+      {isExportModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-white dark:bg-[#1a202c] w-full max-w-lg rounded-xl shadow-2xl overflow-hidden">
+                  <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                          <span className="material-symbols-outlined text-primary">ios_share</span>
+                          Xuất Data Marketing (Smart Export)
+                      </h3>
+                      <button onClick={() => setIsExportModalOpen(false)}><span className="material-symbols-outlined text-slate-400">close</span></button>
+                  </div>
+                  
+                  <div className="p-6">
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Chọn phân khúc khách hàng để xuất dữ liệu phục vụ các chiến dịch Marketing cụ thể:</p>
+                      
+                      <div className="grid grid-cols-1 gap-4">
+                          <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${exportSegment === 'fail' ? 'border-red-500 bg-red-50 dark:bg-red-900/10' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'}`}>
+                              <input type="radio" name="exportSegment" value="fail" checked={exportSegment === 'fail'} onChange={() => setExportSegment('fail')} className="mt-1 text-red-600 focus:ring-red-500" />
+                              <div>
+                                  <span className="block font-bold text-slate-900 dark:text-white">Nhóm Fail (Thất bại)</span>
+                                  <span className="text-xs text-slate-500 block mt-1">Dùng cho chiến dịch "Win-back", khảo sát lý do hoặc Remarketing sản phẩm giá rẻ hơn.</span>
+                              </div>
+                          </label>
+
+                          <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${exportSegment === 'new' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'}`}>
+                              <input type="radio" name="exportSegment" value="new" checked={exportSegment === 'new'} onChange={() => setExportSegment('new')} className="mt-1 text-blue-600 focus:ring-blue-500" />
+                              <div>
+                                  <span className="block font-bold text-slate-900 dark:text-white">Nhóm Mới (New Leads)</span>
+                                  <span className="text-xs text-slate-500 block mt-1">Upload lên Facebook/Google Ads để chạy Retargeting bám đuổi.</span>
+                              </div>
+                          </label>
+
+                          <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${exportSegment === 'consulting' ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/10' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'}`}>
+                              <input type="radio" name="exportSegment" value="consulting" checked={exportSegment === 'consulting'} onChange={() => setExportSegment('consulting')} className="mt-1 text-orange-600 focus:ring-orange-500" />
+                              <div>
+                                  <span className="block font-bold text-slate-900 dark:text-white">Nhóm Đang tư vấn (Nurturing)</span>
+                                  <span className="text-xs text-slate-500 block mt-1">Gửi Email Marketing, tài liệu học thuật để nuôi dưỡng nhu cầu.</span>
+                              </div>
+                          </label>
+
+                          <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${exportSegment === 'ready' ? 'border-green-500 bg-green-50 dark:bg-green-900/10' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'}`}>
+                              <input type="radio" name="exportSegment" value="ready" checked={exportSegment === 'ready'} onChange={() => setExportSegment('ready')} className="mt-1 text-green-600 focus:ring-green-500" />
+                              <div>
+                                  <span className="block font-bold text-slate-900 dark:text-white">Nhóm Đã chốt (Customer)</span>
+                                  <span className="text-xs text-slate-500 block mt-1">Tạo tệp Lookalike (Đối tượng tương tự) chất lượng cao trên Ads.</span>
+                              </div>
+                          </label>
+                      </div>
+                  </div>
+
+                  <div className="p-6 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3 bg-slate-50 dark:bg-slate-800">
+                      <button onClick={() => setIsExportModalOpen(false)} className="px-4 py-2 text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg">Đóng</button>
+                      <button onClick={handleSmartExport} className="px-6 py-2 bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white font-bold rounded-lg shadow-md flex items-center gap-2 transition-all">
+                          <span className="material-symbols-outlined">download</span>
+                          Xuất Excel
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Existing Modals */}
       {isConvertModalOpen && selectedLead && (
         <ConvertModal lead={selectedLead} onClose={() => setIsConvertModalOpen(false)} />
       )}

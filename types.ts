@@ -3,7 +3,8 @@ export interface Lead {
   id: string;
   name: string;
   source: string;
-  status: 'new' | 'consulting' | 'trial' | 'ready' | 'closed'; // Added 'closed'
+  status: 'new' | 'consulting' | 'trial' | 'ready' | 'closed' | 'fail'; // Added 'fail'
+  failReason?: string; // New field for Marketing Analysis
   avatar: string;
   lastActivity: string;
   tags?: string[];
@@ -25,12 +26,21 @@ export interface ClassItem {
   mode: 'online' | 'offline';
   teacher: string;
   teacherAvatar: string;
-  students: number; // Current Enrollment
+  students: number; // Current Enrollment (Ideally redundant if calculated, but kept for list views)
   maxStudents: number; // Max Capacity
   progress: number;
   tuitionFee: number;
   location?: string; // Address for offline
   link?: string; // Meeting link for online
+  startDate?: string; // ISO Date YYYY-MM-DD
+  endDate?: string;   // ISO Date YYYY-MM-DD
+}
+
+export type AttendanceStatus = 'present' | 'excused' | 'unexcused';
+
+export interface AttendanceRecord {
+    date: string;
+    status: AttendanceStatus;
 }
 
 export interface Student {
@@ -51,6 +61,11 @@ export interface Student {
   cachedBalance?: number; // Stored value (Subject to Reconciliation Check)
   paid?: number;
   currentClass?: string;
+  // Progress Tracking
+  attendanceHistory?: AttendanceRecord[];
+  scores?: { name: string; value: number }[]; // Added: Test scores
+  averageScore?: number;
+  teacherNote?: string;
 }
 
 export interface InstallmentItem {
@@ -136,4 +151,30 @@ export interface SystemSettings {
   theme: 'light' | 'dark';
   exportFormat: string;
   autoBackup: boolean;
+  debugMode: boolean; // NEW: Debug Mode Flag
 }
+
+// NEW: Test Result Interface
+export interface TestResult {
+    id: string;
+    module: string;
+    name: string;
+    status: 'pending' | 'running' | 'pass' | 'fail';
+    message: string;
+    timestamp: string;
+}
+
+// Define granular permission keys
+export type PermissionKey = 
+    | 'view_dashboard'
+    | 'view_finance'
+    | 'edit_settings'
+    | 'delete_data'
+    | 'view_leads'
+    | 'edit_leads'
+    | 'view_students'
+    | 'edit_students'
+    | 'view_classes'
+    | 'edit_classes'
+    | 'export_data'
+    | 'view_reports'; // ADDED

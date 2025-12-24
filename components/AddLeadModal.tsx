@@ -205,7 +205,7 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ onClose }) => {
                 <button type="button" onClick={onClose} className="flex items-center justify-center px-5 h-10 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 focus:ring-2 focus:ring-slate-200 transition-all">
                     Hủy bỏ
                 </button>
-                <button type="submit" className="flex items-center justify-center gap-2 px-5 h-10 rounded-lg bg-primary hover:bg-blue-700 text-white text-sm font-medium shadow-sm hover:shadow-md focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-all">
+                <button type="submit" className="flex items-center justify-center gap-2 px-5 h-10 rounded-lg bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white text-sm font-medium shadow-sm hover:shadow-md focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-all">
                     <span className="material-symbols-outlined text-[18px]">save</span>
                     Lưu thông tin
                 </button>

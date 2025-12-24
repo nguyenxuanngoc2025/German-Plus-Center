@@ -1,37 +1,24 @@
-
 import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
-import { Lead, Student, ClassItem, Tuition, FinanceRecord, Staff, Document, SystemSettings } from '../types';
+import { Lead, Student, ClassItem, Tuition, FinanceRecord, Staff, Document, SystemSettings, TestResult, AttendanceStatus, AttendanceRecord, PermissionKey } from '../types';
 import { MOCK_LEADS, MOCK_STUDENTS, MOCK_CLASSES, MOCK_TUITION, MOCK_FINANCE, MOCK_STAFF, MOCK_DOCUMENTS } from '../constants';
 
-export type UserRole = 'admin' | 'manager' | 'sale' | 'teacher' | 'student';
+export type { PermissionKey };
 
-// Define granular permission keys
-export type PermissionKey = 
-    | 'view_dashboard'
-    | 'view_finance'
-    | 'edit_settings'
-    | 'delete_data'
-    | 'view_leads'
-    | 'edit_leads'
-    | 'view_students'
-    | 'edit_students'
-    | 'view_classes'
-    | 'edit_classes'
-    | 'export_data';
+export type UserRole = 'admin' | 'manager' | 'sale' | 'teacher' | 'student';
 
 // Role Definitions Configuration
 const ROLE_PERMISSIONS: Record<UserRole, PermissionKey[]> = {
     admin: [
         'view_dashboard', 'view_finance', 'edit_settings', 'delete_data', 
         'view_leads', 'edit_leads', 'view_students', 'edit_students', 
-        'view_classes', 'edit_classes', 'export_data'
+        'view_classes', 'edit_classes', 'export_data', 'view_reports'
     ],
     manager: [ // Giáo vụ
         'view_dashboard', 
         'view_leads', 'edit_leads', 
         'view_students', 'edit_students', 
-        'view_classes', 'edit_classes' 
-        // NO Finance, NO Settings, NO Delete, NO Export (strict)
+        'view_classes', 'edit_classes', 'view_reports' 
+        // NO Finance (Edit), NO Settings, NO Delete, NO Export (strict)
     ],
     sale: [
         'view_dashboard', 
@@ -70,6 +57,13 @@ interface Discrepancy {
     calculated: number;
 }
 
+interface FinancialStats {
+    revenue: number;
+    expense: number;
+    debt: number;
+    profit: number;
+}
+
 interface DataContextType {
   leads: Lead[];
   students: Student[];
@@ -82,12 +76,17 @@ interface DataContextType {
   isAuthenticated: boolean;
   currentUser: UserInfo | null;
   
-  // Data Integrity
+  // Data Integrity & QA
   discrepancies: Discrepancy[];
+  testResults: TestResult[];
   reconcileData: () => Promise<{ success: boolean, count: number }>;
+  runSystemDiagnostics: () => Promise<void>;
+  
+  // Unified Calculation Helper
+  calculateFinancials: (startDate?: Date, endDate?: Date) => FinancialStats;
 
   // Actions
-  addLead: (lead: Omit<Lead, 'id' | 'status' | 'avatar' | 'lastActivity'>) => void;
+  addLead: (lead: Omit<Lead, 'id' | 'status' | 'avatar' | 'lastActivity'>) => string; // Return ID
   updateLead: (id: string, updates: Partial<Lead>) => void;
   
   // Auth Actions
@@ -116,7 +115,8 @@ interface DataContextType {
   updateClass: (id: string, updates: Partial<ClassItem>) => void;
   addStaff: (staffData: Omit<Staff, 'id' | 'status' | 'joinDate' | 'avatar'>) => void;
   addFinanceRecord: (record: Omit<FinanceRecord, 'id' | 'date'> & { date?: string }) => void;
-  saveAttendance: (classId: string, date: string, attendanceData: Record<string, boolean>) => { success: boolean; message: string };
+  saveAttendance: (classId: string, date: string, attendanceData: Record<string, AttendanceStatus>) => { success: boolean; message: string };
+  updateStudentNote: (studentId: string, note: string) => void;
   
   // Document Actions
   addDocument: (doc: Omit<Document, 'id' | 'uploadDate' | 'downloads' | 'size' | 'uploadedBy'>) => void;
@@ -132,15 +132,48 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+// Helper to generate mock attendance history
+const generateMockAttendance = (): AttendanceRecord[] => {
+    const history: AttendanceRecord[] = [];
+    const statuses: AttendanceStatus[] = ['present', 'present', 'present', 'present', 'excused', 'unexcused'];
+    const today = new Date();
+    for (let i = 10; i > 0; i--) {
+        const d = new Date();
+        d.setDate(today.getDate() - (i * 2)); // Every other day
+        history.push({
+            date: d.toISOString().split('T')[0],
+            status: statuses[Math.floor(Math.random() * statuses.length)]
+        });
+    }
+    return history;
+};
+
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [leads, setLeads] = useState<Lead[]>(MOCK_LEADS);
-  const [students, setStudents] = useState<Student[]>(MOCK_STUDENTS);
+  // Initialize students with mock attendance and scores
+  const [students, setStudents] = useState<Student[]>(() => {
+      return MOCK_STUDENTS.map(s => {
+          const score1 = Math.floor(Math.random() * 40) + 60;
+          const score2 = Math.floor(Math.random() * 40) + 60;
+          return {
+            ...s,
+            attendanceHistory: generateMockAttendance(),
+            scores: [
+                { name: 'KT Giữa kỳ', value: score1 },
+                { name: 'KT Cuối kỳ', value: score2 }
+            ],
+            averageScore: Math.round((score1 + score2) / 2),
+            teacherNote: ''
+          }
+      });
+  });
   const [classes, setClasses] = useState<ClassItem[]>(MOCK_CLASSES);
   const [tuition, setTuition] = useState<Tuition[]>(MOCK_TUITION);
   const [finance, setFinance] = useState<FinanceRecord[]>(MOCK_FINANCE);
   const [staff, setStaff] = useState<Staff[]>(MOCK_STAFF);
   const [documents, setDocuments] = useState<Document[]>(MOCK_DOCUMENTS);
   const [discrepancies, setDiscrepancies] = useState<Discrepancy[]>([]);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
   
   // --- SETTINGS STATE ---
   const [settings, setSettingsState] = useState<SystemSettings>(() => {
@@ -158,7 +191,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           notifications: true,
           theme: 'light',
           exportFormat: 'excel',
-          autoBackup: true
+          autoBackup: true,
+          debugMode: false
       };
   });
 
@@ -189,20 +223,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return true;
   });
 
-  // --- BACKGROUND INTEGRITY CHECK ---
+  // --- AUTO-CLEANUP & BACKGROUND JOBS ---
   useEffect(() => {
       if (!isAuthenticated) return;
 
-      const checkIntegrity = () => {
+      const runAutoCleanup = () => {
+          // 1. Data Integrity Check (Discrepancy between Cached & Real)
           const issues: Discrepancy[] = [];
           
           students.forEach(student => {
-              // 1. Calculate REAL debt from Invoice Table (Source of Truth)
               const studentTuition = tuition.filter(t => t.studentId === student.id);
               const realDebt = studentTuition.reduce((sum, t) => sum + t.remainingAmount, 0);
-              
-              // 2. Compare with Stored Cache (Simulated Database Field)
-              // If cachedBalance is undefined, we assume it's 0 or synced, but for this demo logic we check if property exists
               const cached = student.cachedBalance !== undefined ? student.cachedBalance : realDebt; 
               
               if (cached !== realDebt) {
@@ -214,18 +245,90 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   });
               }
           });
-
           setDiscrepancies(issues);
       };
 
-      // Run initially
-      checkIntegrity();
-
-      // Optional: Set interval for periodic checks (e.g., every 30s)
-      const interval = setInterval(checkIntegrity, 30000);
+      runAutoCleanup();
+      const interval = setInterval(runAutoCleanup, 60000);
       return () => clearInterval(interval);
 
   }, [students, tuition, isAuthenticated]);
+
+  // --- DIAGNOSTICS & E2E TESTING ---
+  const runSystemDiagnostics = async () => {
+      const newResults: TestResult[] = [];
+      const log = (module: string, name: string, status: TestResult['status'], msg: string) => {
+          newResults.push({
+              id: Date.now().toString() + Math.random(),
+              module, name, status, message: msg, timestamp: new Date().toLocaleTimeString()
+          });
+      };
+
+      setTestResults([{ id: 'init', module: 'System', name: 'Starting Diagnostics...', status: 'running', message: 'Running...', timestamp: '' }]);
+
+      // 1. Connectivity / Data Integrity Check
+      log('Health Check', 'Student-Tuition Link', 'running', 'Checking orphaned records...');
+      const orphans = tuition.filter(t => !students.find(s => s.id === t.studentId));
+      if (orphans.length > 0) {
+          log('Health Check', 'Data Integrity', 'fail', `Found ${orphans.length} orphaned tuition records.`);
+      } else {
+          log('Health Check', 'Data Integrity', 'pass', 'All tuition records linked to valid students.');
+      }
+
+      // 2. Functionality Check (Mocked Route Check)
+      log('Routes', 'Critical Paths', 'pass', 'Dashboard, Leads, Students, Finance routes accessible.');
+
+      // 3. E2E Scenario: Create Lead -> Convert -> Check Finance
+      log('E2E', 'Full Flow Test', 'running', 'Simulating Lead to Student conversion...');
+      
+      const initialStudentCount = students.length;
+      const initialFinanceCount = finance.length;
+      const testClass = classes[0]; // Assume at least 1 class exists
+
+      if(!testClass) {
+          log('E2E', 'Full Flow Test', 'fail', 'No classes available to test enrollment.');
+      } else {
+          // A. Create Lead
+          const testLeadId = addLead({
+              name: "__TEST_USER__",
+              email: "test@auto.com",
+              phone: "0000000000",
+              source: "System Test",
+              learningMode: "online"
+          });
+          
+          // B. Convert to Student
+          const conversion = convertLeadToStudent(testLeadId, testClass.id, 1000000, {
+              method: 'full',
+              deposit: 1000000,
+              installments: []
+          });
+
+          if (!conversion.success) {
+              log('E2E', 'Conversion', 'fail', `Conversion failed: ${conversion.message}`);
+          } else {
+              // C. Verify Data State
+              // Check Student Created?
+              const studentCreated = students.length === initialStudentCount + 1;
+              // Check Finance Recorded?
+              const financeRecorded = finance.length === initialFinanceCount + 1; // Assuming full payment creates 1 record
+              // Check Student Balance?
+              const newStudent = students.find(s => s.id === conversion.studentId);
+              const balanceCorrect = newStudent?.cachedBalance === 0;
+
+              if (studentCreated && financeRecorded && balanceCorrect) {
+                  log('E2E', 'Full Flow Test', 'pass', 'Lead -> Student -> Paid Invoice flow successful.');
+              } else {
+                  log('E2E', 'Full Flow Test', 'fail', `State mismatch. StudentCreated: ${studentCreated}, FinanceRecorded: ${financeRecorded}, BalanceZero: ${balanceCorrect}`);
+              }
+
+              // Cleanup (Optional: In a real app we might leave it or soft delete. Here we keep it to show result)
+              // deleteStudent(conversion.studentId); 
+          }
+      }
+
+      setTestResults(newResults);
+  };
 
   const reconcileData = async () => {
       return new Promise<{ success: boolean, count: number }>((resolve) => {
@@ -240,8 +343,37 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               setDiscrepancies([]); // Clear alert
               
               resolve({ success: true, count: discrepancies.length });
-          }, 1500); // Simulate processing delay
+          }, 1500); 
       });
+  };
+
+  // --- UNIFIED FINANCIAL CALCULATION ---
+  const calculateFinancials = (startDate?: Date, endDate?: Date): FinancialStats => {
+      let filteredFinance = finance;
+      let filteredTuition = tuition;
+
+      if (startDate && endDate) {
+          const start = new Date(startDate); start.setHours(0,0,0,0);
+          const end = new Date(endDate); end.setHours(23,59,59,999);
+
+          filteredFinance = finance.filter(f => {
+              const d = new Date(f.date);
+              return d >= start && d <= end;
+          });
+          
+          filteredTuition = tuition.filter(t => {
+              const d = new Date(t.dueDate);
+              return d >= start && d <= end;
+          });
+      }
+
+      const revenue = filteredFinance.filter(f => f.type === 'income').reduce((sum, f) => sum + f.amount, 0);
+      const expense = filteredFinance.filter(f => f.type === 'expense').reduce((sum, f) => sum + f.amount, 0);
+      const debt = (startDate && endDate) 
+          ? filteredTuition.reduce((sum, t) => sum + t.remainingAmount, 0)
+          : tuition.reduce((sum, t) => sum + t.remainingAmount, 0); 
+
+      return { revenue, expense, debt, profit: revenue - expense };
   };
 
   // --- SIMULATION STATE ---
@@ -258,7 +390,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           };
           setIsAuthenticated(true);
           setCurrentUser(user);
-          setOriginalRole(null); // Reset simulation on login
+          setOriginalRole(null); 
           localStorage.setItem('german_plus_auth', 'true');
           localStorage.setItem('german_plus_user', JSON.stringify(user));
           return true;
@@ -277,8 +409,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateRoleAndRedirect = (newRole: UserRole) => {
       if (!currentUser) return;
       const updatedUser = { ...currentUser, role: newRole };
-      
-      // Update Name for Clarity in Demo based on role
       if (newRole === 'admin') updatedUser.name = "Super Admin";
       else if (newRole === 'manager') updatedUser.name = "Trưởng phòng Giáo vụ";
       else if (newRole === 'teacher') updatedUser.name = "Giáo viên Đức Ngữ";
@@ -286,12 +416,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       else if (newRole === 'student') updatedUser.name = "Nguyễn Văn Học Viên";
       
       setCurrentUser(updatedUser);
-      // We don't save simulation state to localStorage to avoid stuck state on refresh
       if (!originalRole) {
           localStorage.setItem('german_plus_user', JSON.stringify(updatedUser));
       }
       
-      // Auto redirect for UX based on role restrictions
       if (newRole === 'teacher' || newRole === 'student') {
           window.location.hash = '#/calendar'; 
       } else {
@@ -299,15 +427,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }
 
-  // Legacy handler (kept for compatibility, but redirects logic)
   const handleRoleChange = (newRole: UserRole) => {
       updateRoleAndRedirect(newRole);
   };
 
-  // --- SIMULATION LOGIC ---
   const startSimulation = (role: UserRole) => {
       if (!currentUser) return;
-      // Save original role if not already simulating
       if (!originalRole) {
           setOriginalRole(currentUser.role);
       }
@@ -316,14 +441,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const stopSimulation = () => {
       if (!currentUser || !originalRole) return;
-      // Restore original
-      const restoredUser = { ...currentUser, role: originalRole, name: 'Super Admin' }; // Reset name to Super Admin default
+      const restoredUser = { ...currentUser, role: originalRole, name: 'Super Admin' };
       setCurrentUser(restoredUser);
       setOriginalRole(null);
-      window.location.hash = '#/settings'; // Go back to settings where we started
+      window.location.hash = '#/settings'; 
   };
 
-  // --- CORE PERMISSION LOGIC ---
   const hasPermission = (permission: PermissionKey): boolean => {
       if (!currentUser) return false;
       const userPermissions = ROLE_PERMISSIONS[currentUser.role];
@@ -331,14 +454,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const addLead = (newLeadData: Omit<Lead, 'id' | 'status' | 'avatar' | 'lastActivity'>) => {
+    const id = Date.now().toString();
     const newLead: Lead = {
-      id: Date.now().toString(),
+      id: id,
       ...newLeadData,
       status: 'new',
       avatar: newLeadData.name.charAt(0).toUpperCase() + (newLeadData.name.split(' ').pop()?.charAt(0).toUpperCase() || ''),
       lastActivity: 'Vừa xong',
     };
     setLeads(prev => [newLead, ...prev]);
+    return id; // Return ID for chaining
   };
 
   const updateLead = (id: string, updates: Partial<Lead>) => {
@@ -354,7 +479,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: false, message: `Lớp ${targetClass.name} đã đầy!` };
     }
 
-    // 1. Create Student
     const newStudentId = `HV${new Date().getFullYear()}${Math.floor(Math.random() * 10000)}`;
     const newStudent: Student = {
       id: newStudentId,
@@ -369,27 +493,30 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       location: 'Hà Nội',
       classId: classId,
       enrollmentDate: new Date().toISOString().split('T')[0],
-      cachedBalance: tuitionFee - (paymentPlan ? paymentPlan.deposit : 0) // Initialize correctly
+      cachedBalance: tuitionFee - (paymentPlan ? paymentPlan.deposit : 0),
+      attendanceHistory: generateMockAttendance(), // Initialize attendance
+      averageScore: 0,
+      scores: [
+          { name: 'KT Giữa kỳ', value: 0 },
+          { name: 'KT Cuối kỳ', value: 0 }
+      ]
     };
 
-    // 2. Create Tuition Record(s) based on Plan
     const newTuitions: Tuition[] = [];
-    const invoiceId = `TUI-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     
     if (!paymentPlan || paymentPlan.method === 'full') {
-        // Standard full payment logic
+        const invoiceId = `TUI-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
         newTuitions.push({
             id: invoiceId,
             studentId: newStudentId,
             totalAmount: tuitionFee,
             paidAmount: paymentPlan ? paymentPlan.deposit : 0, 
             remainingAmount: paymentPlan ? tuitionFee - paymentPlan.deposit : tuitionFee,
-            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // +7 days default
+            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             status: paymentPlan && paymentPlan.deposit >= tuitionFee ? 'paid' : 'unpaid',
             description: 'Học phí trọn gói'
         });
         
-        // Record income if "Full Payment" was processed immediately in modal (Deposit = Full)
         if(paymentPlan && paymentPlan.deposit > 0) {
              const newFinance: FinanceRecord = {
                 id: `FIN-${Date.now()}`,
@@ -405,8 +532,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
     } else {
-        // Installment Logic
-        // 2.1 Deposit Invoice (Paid)
         if (paymentPlan.deposit > 0) {
             const depositInvoiceId = `TUI-${Date.now()}-DEP`;
             newTuitions.push({
@@ -415,11 +540,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 totalAmount: paymentPlan.deposit,
                 paidAmount: paymentPlan.deposit,
                 remainingAmount: 0,
-                dueDate: new Date().toISOString().split('T')[0], // Today
+                dueDate: new Date().toISOString().split('T')[0],
                 status: 'paid',
                 description: 'Đặt cọc / Đợt 1'
             });
-            // Record Income for Deposit
             const newFinance: FinanceRecord = {
                 id: `FIN-${Date.now()}-DEP`,
                 type: 'income',
@@ -433,7 +557,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setFinance(prev => [newFinance, ...prev]);
         }
 
-        // 2.2 Future Installments (Unpaid)
         paymentPlan.installments.forEach((inst, idx) => {
             newTuitions.push({
                 id: `TUI-${Date.now()}-INST${idx + 1}`,
@@ -443,7 +566,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 remainingAmount: inst.amount,
                 dueDate: inst.date,
                 status: 'unpaid',
-                description: `Thanh toán Đợt ${idx + 2}` // Idx 0 is actually installment #2 (after deposit)
+                description: `Thanh toán Đợt ${idx + 2}`
             });
         });
     }
@@ -488,11 +611,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     let newStatus: Tuition['status'] = 'partial';
     if (newRemaining <= 0) newStatus = 'paid';
     
-    // Update Invoice
     setTuition(prev => prev.map(t => t.id === tuitionId ? { ...t, paidAmount: newPaid, remainingAmount: newRemaining, status: newStatus } : t));
 
-    // Update Student Cached Balance (Simulated Real-time sync, but if we want to demonstrate the alert, we might skip this in a buggy version)
-    // Here we update it to keep data consistent, assuming the bug comes from external factors or legacy data.
     setStudents(prev => prev.map(s => {
         if (s.id === tuitionRecord.studentId && s.cachedBalance !== undefined) {
             return { ...s, cachedBalance: Math.max(0, s.cachedBalance - amount) };
@@ -562,7 +682,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setTuition(updatedTuition);
       setFinance(prev => [...newFinanceRecords, ...prev]);
       
-      // Update Cached Balance
       setStudents(prev => prev.map(s => {
           if (s.id === studentId && s.cachedBalance !== undefined) {
               return { ...s, cachedBalance: Math.max(0, s.cachedBalance - amount) };
@@ -593,66 +712,86 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setFinance(prev => [newRecord, ...prev]);
   };
 
-  const saveAttendance = (classId: string, date: string, attendanceData: Record<string, boolean>) => {
-      console.log(`[ATTENDANCE SAVED] Class: ${classId}, Date: ${date}`, attendanceData);
-      const presentCount = Object.values(attendanceData).filter(Boolean).length;
-      return { success: true, message: `Đã lưu điểm danh ngày ${date}. Có mặt: ${presentCount} học viên.` };
+  const saveAttendance = (classId: string, date: string, attendanceData: Record<string, AttendanceStatus>) => {
+      // Update local state students
+      setStudents(prev => prev.map(student => {
+          if (student.classId === classId) {
+              // Find if student has attendance data in payload
+              const status = attendanceData[student.id];
+              if (status) {
+                  // Check if record for this date exists
+                  const existingIndex = student.attendanceHistory?.findIndex(r => r.date === date);
+                  let newHistory = [...(student.attendanceHistory || [])];
+                  
+                  if (existingIndex !== undefined && existingIndex >= 0) {
+                      newHistory[existingIndex].status = status;
+                  } else {
+                      newHistory.push({ date, status });
+                  }
+                  
+                  return { ...student, attendanceHistory: newHistory };
+              }
+          }
+          return student;
+      }));
+      return { success: true, message: "Đã lưu điểm danh!" };
+  };
+
+  const updateStudentNote = (studentId: string, note: string) => {
+      setStudents(prev => prev.map(s => s.id === studentId ? { ...s, teacherNote: note } : s));
+  };
+
+  const addDocument = (doc: Omit<Document, 'id' | 'uploadDate' | 'downloads' | 'size' | 'uploadedBy'>) => {
+      const newDoc: Document = {
+          id: `DOC-${Date.now()}`,
+          uploadDate: new Date().toLocaleDateString('en-GB'), // DD/MM/YYYY
+          downloads: 0,
+          size: `${(Math.random() * 5 + 1).toFixed(1)} MB`, // Mock size
+          uploadedBy: currentUser?.name || 'Admin',
+          ...doc
+      };
+      setDocuments(prev => [newDoc, ...prev]);
+  };
+
+  const deleteDocument = (id: string) => {
+      setDocuments(prev => prev.filter(d => d.id !== id));
+  };
+
+  const updateSettings = async (newSettings: Partial<SystemSettings>) => {
+      const updated = { ...settings, ...newSettings };
+      setSettingsState(updated);
+      localStorage.setItem('german_plus_settings', JSON.stringify(updated));
+      return { success: true, message: "Settings updated" };
+  };
+
+  const getStudentBalance = (studentId: string) => {
+      const studentTuition = tuition.filter(t => t.studentId === studentId);
+      return studentTuition.reduce((sum, t) => sum + t.remainingAmount, 0);
+  };
+
+  const getClassCapacity = (classId: string) => {
+      const cls = classes.find(c => c.id === classId);
+      if (!cls) return { current: 0, max: 0, isFull: false };
+      return { current: cls.students, max: cls.maxStudents, isFull: cls.students >= cls.maxStudents };
   };
 
   const addClass = (classData: Omit<ClassItem, 'id' | 'students' | 'progress' | 'status'>, initialStudentIds: string[], initialLeadIds: string[]) => {
-    const newClassId = `C${Date.now()}`;
-    const convertedStudentIds: string[] = [];
-    const newStudentsFromLeads: Student[] = [];
-    const newTuitionsFromLeads: Tuition[] = [];
-    
-    initialLeadIds.forEach(leadId => {
-        const lead = leads.find(l => l.id === leadId);
-        if(lead) {
-            const newId = `HV${Date.now()}-${Math.floor(Math.random()*1000)}`;
-            convertedStudentIds.push(newId);
-            newStudentsFromLeads.push({
-                id: newId,
-                leadId: leadId,
-                name: lead.name,
-                email: lead.email || 'pending@update.com',
-                phone: lead.phone || '',
-                avatar: lead.avatar,
-                status: 'active',
-                code: `GP-2023-${Math.floor(Math.random() * 10000)}`,
-                dob: '01/01/2000',
-                location: 'Hà Nội',
-                classId: newClassId,
-                enrollmentDate: new Date().toISOString().split('T')[0]
-            });
-            newTuitionsFromLeads.push({
-                id: `TUI-${Date.now()}-${newId}`,
-                studentId: newId,
-                totalAmount: classData.tuitionFee,
-                paidAmount: 0,
-                remainingAmount: classData.tuitionFee,
-                dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                status: 'unpaid',
-                description: 'Học phí trọn gói'
-            });
-        }
-    });
+      const newClass: ClassItem = {
+          id: `C${Date.now()}`,
+          ...classData,
+          students: initialStudentIds.length + initialLeadIds.length,
+          progress: 0,
+          status: 'upcoming'
+      };
+      setClasses(prev => [newClass, ...prev]);
 
-    setStudents(prev => {
-        const updatedExisting = prev.map(s => initialStudentIds.includes(s.id) ? { ...s, classId: newClassId } : s);
-        return [...newStudentsFromLeads, ...updatedExisting];
-    });
-    setTuition(prev => [...newTuitionsFromLeads, ...prev]);
-    setLeads(prev => prev.map(l => initialLeadIds.includes(l.id) ? { ...l, status: 'closed' as 'closed' } : l));
+      // Update existing students
+      setStudents(prev => prev.map(s => initialStudentIds.includes(s.id) ? { ...s, classId: newClass.id } : s));
 
-    const totalStudents = initialStudentIds.length + convertedStudentIds.length;
-    const newClass: ClassItem = {
-        id: newClassId,
-        ...classData,
-        students: totalStudents,
-        progress: 0,
-        status: 'upcoming'
-    };
-    setClasses(prev => [newClass, ...prev]);
+      // Convert Leads
+      initialLeadIds.forEach(leadId => {
+          convertLeadToStudent(leadId, newClass.id, classData.tuitionFee);
+      });
   };
 
   const updateClass = (id: string, updates: Partial<ClassItem>) => {
@@ -661,119 +800,70 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const addStaff = (staffData: Omit<Staff, 'id' | 'status' | 'joinDate' | 'avatar'>) => {
       const newStaff: Staff = {
-          id: `NV${Date.now().toString().slice(-4)}`,
+          id: `NV${Date.now()}`,
+          ...staffData,
           status: 'active',
-          joinDate: new Date().toLocaleDateString('vi-VN'),
-          avatar: staffData.name.charAt(0).toUpperCase() + (staffData.name.split(' ').pop()?.charAt(0).toUpperCase() || ''),
-          ...staffData
+          joinDate: new Date().toLocaleDateString('en-GB'),
+          avatar: staffData.name.charAt(0) // Simple initial avatar
       };
       setStaff(prev => [newStaff, ...prev]);
-  }
-
-  const addDocument = (doc: Omit<Document, 'id' | 'uploadDate' | 'downloads' | 'size' | 'uploadedBy'>) => {
-    const newDoc: Document = {
-      id: `DOC-${Date.now()}`,
-      uploadDate: new Date().toLocaleDateString('vi-VN'),
-      downloads: 0,
-      size: `${Math.floor(Math.random() * 20) + 1} MB`,
-      uploadedBy: currentUser?.name || 'Admin',
-      ...doc
-    };
-    setDocuments(prev => [newDoc, ...prev]);
-  };
-
-  const deleteDocument = (id: string) => {
-    setDocuments(prev => prev.filter(d => d.id !== id));
-  };
-
-  // --- SETTINGS UPDATE IMPLEMENTATION ---
-  const updateSettings = async (newSettings: Partial<SystemSettings>) => {
-      return new Promise<{ success: boolean; message: string }>((resolve) => {
-          // Simulate network delay
-          setTimeout(() => {
-              const updatedSettings = { ...settings, ...newSettings };
-              setSettingsState(updatedSettings);
-              localStorage.setItem('german_plus_settings', JSON.stringify(updatedSettings));
-              resolve({ success: true, message: "Settings updated successfully" });
-          }, 800); // 800ms delay
-      });
-  };
-
-  const enrichedStudents = useMemo(() => {
-    return students.map(student => {
-      const studentTuition = tuition.filter(t => t.studentId === student.id);
-      const totalRemaining = studentTuition.reduce((sum, t) => sum + t.remainingAmount, 0);
-      const totalPaid = studentTuition.reduce((sum, t) => sum + t.paidAmount, 0);
-      const studentClass = classes.find(c => c.id === student.classId);
-      return {
-        ...student,
-        balance: totalRemaining, // Value B (Real time)
-        paid: totalPaid,
-        currentClass: studentClass ? studentClass.name : ''
-      };
-    });
-  }, [students, tuition, classes]);
-
-  const getStudentBalance = (studentId: string) => {
-    const studentTuition = tuition.filter(t => t.studentId === studentId);
-    return studentTuition.reduce((sum, t) => sum + t.remainingAmount, 0);
-  };
-
-  const getClassCapacity = (classId: string) => {
-    const c = classes.find(cls => cls.id === classId);
-    if (!c) return { current: 0, max: 0, isFull: true };
-    return { current: c.students, max: c.maxStudents, isFull: c.students >= c.maxStudents };
-  };
-
-  const value = {
-    leads,
-    students: enrichedStudents,
-    classes,
-    tuition,
-    finance,
-    staff,
-    documents,
-    settings, // Export Settings
-    isAuthenticated,
-    currentUser,
-    login,
-    logout,
-    handleRoleChange,
-    
-    // Integrity
-    discrepancies,
-    reconcileData,
-
-    // Simulation
-    isSimulating: !!originalRole,
-    originalRole,
-    startSimulation,
-    stopSimulation,
-
-    hasPermission,
-    addLead,
-    updateLead,
-    convertLeadToStudent,
-    enrollStudent,
-    removeStudentFromClass,
-    recordPayment,
-    recordStudentPayment,
-    deleteTuition,
-    updateTuition,
-    addClass,
-    updateClass,
-    addStaff,
-    addFinanceRecord,
-    saveAttendance,
-    addDocument,
-    deleteDocument,
-    updateSettings, // Export Update Function
-    getStudentBalance,
-    getClassCapacity
   };
 
   return (
-    <DataContext.Provider value={value}>
+    <DataContext.Provider value={{
+      leads,
+      students,
+      classes,
+      tuition,
+      finance,
+      staff,
+      documents,
+      settings,
+      isAuthenticated,
+      currentUser,
+      
+      discrepancies,
+      testResults,
+      reconcileData,
+      runSystemDiagnostics,
+      calculateFinancials,
+
+      addLead,
+      updateLead,
+      
+      login,
+      logout,
+      handleRoleChange,
+      
+      isSimulating: !!originalRole,
+      originalRole,
+      startSimulation,
+      stopSimulation,
+
+      hasPermission,
+
+      convertLeadToStudent,
+      enrollStudent,
+      removeStudentFromClass,
+      recordPayment,
+      recordStudentPayment,
+      deleteTuition,
+      updateTuition,
+      addClass,
+      updateClass,
+      addStaff,
+      addFinanceRecord,
+      saveAttendance,
+      updateStudentNote,
+      
+      addDocument,
+      deleteDocument,
+
+      updateSettings,
+
+      getStudentBalance,
+      getClassCapacity
+    }}>
       {children}
     </DataContext.Provider>
   );

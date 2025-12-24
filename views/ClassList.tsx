@@ -74,22 +74,22 @@ const ClassList: React.FC = () => {
     switch(status) {
       case 'active':
         return (
-          <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/30">
-            <span className="mr-1.5 size-1.5 rounded-full bg-green-600 dark:bg-green-400"></span>
+          <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold uppercase text-green-700 border border-green-200">
+            <span className="mr-1.5 size-1.5 rounded-full bg-green-600"></span>
             Đang hoạt động
           </span>
         );
       case 'upcoming':
         return (
-          <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-600/20 dark:bg-orange-900/30 dark:text-orange-400 dark:ring-orange-500/30">
-            <span className="mr-1.5 size-1.5 rounded-full bg-orange-600 dark:bg-orange-400"></span>
+          <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold uppercase text-orange-700 border border-orange-200">
+            <span className="mr-1.5 size-1.5 rounded-full bg-orange-600"></span>
             Sắp khai giảng
           </span>
         );
       case 'full':
         return (
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-600/10 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-600/30">
-            <span className="mr-1.5 size-1.5 rounded-full bg-gray-500 dark:bg-gray-400"></span>
+          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold uppercase text-gray-700 border border-gray-200">
+            <span className="mr-1.5 size-1.5 rounded-full bg-gray-500"></span>
             Đầy lớp
           </span>
         );
@@ -101,13 +101,13 @@ const ClassList: React.FC = () => {
   const getModeBadge = (cls: ClassItem) => {
     if (cls.mode === 'online') {
       return (
-        <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-800" title={cls.link || 'Chưa có link'}>
+        <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200" title={cls.link || 'Chưa có link'}>
            <span className="material-symbols-outlined text-[12px]">wifi</span> Online
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-600" title={cls.location || 'Chưa có địa chỉ'}>
+      <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200" title={cls.location || 'Chưa có địa chỉ'}>
          <span className="material-symbols-outlined text-[12px]">apartment</span> Offline
       </span>
     );
@@ -126,11 +126,11 @@ const ClassList: React.FC = () => {
     <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark">
       <Header title="Trung tâm Lớp học" />
       <div className="flex-1 overflow-y-auto p-4 md:p-8">
-        <div className="mx-auto max-w-[1200px] flex flex-col gap-6">
+        <div className="mx-auto max-w-[1400px] flex flex-col gap-6">
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
                 <div className="flex flex-col gap-1">
-                    <h2 className="text-[#111318] dark:text-white text-3xl font-bold tracking-tight">Danh sách Lớp học</h2>
-                    <p className="text-[#616f89] dark:text-slate-400 text-sm">Quản lý và theo dõi tiến độ của tất cả các lớp tiếng Đức hiện tại.</p>
+                    <h2 className="text-slate-800 dark:text-white text-3xl font-bold tracking-tight">Danh sách Lớp học</h2>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm">Quản lý và theo dõi tiến độ của tất cả các lớp tiếng Đức hiện tại.</p>
                 </div>
                 <div className="flex items-center gap-3">
                     {hasPermission('export_data') && (
@@ -142,7 +142,7 @@ const ClassList: React.FC = () => {
                     {hasPermission('edit_classes') && (
                         <button 
                             onClick={() => navigate('/classes/create')}
-                            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
+                            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-secondary px-4 text-sm font-semibold text-white hover:bg-orange-600 shadow-md transition-all"
                         >
                              <span className="material-symbols-outlined text-lg">add</span>
                             Thêm Lớp học mới
@@ -152,7 +152,7 @@ const ClassList: React.FC = () => {
             </div>
 
             {/* Filters Toolbar */}
-            <div className="flex flex-col lg:flex-row items-center justify-between gap-4 rounded-xl bg-white dark:bg-[#1a202c] p-3 shadow-sm border border-[#e5e7eb] dark:border-slate-700">
+            <div className="flex flex-col lg:flex-row items-center justify-between gap-4 rounded-xl bg-white dark:bg-[#1a202c] p-3 shadow-subtle border border-[#e5e7eb] dark:border-slate-700">
                 <div className="flex flex-col sm:flex-row items-center gap-3 flex-1 w-full lg:w-auto">
                     <div className="relative w-full sm:w-64">
                         <input 
@@ -216,30 +216,30 @@ const ClassList: React.FC = () => {
 
             {viewMode === 'list' ? (
                 /* List View (Table) */
-                <div className="rounded-xl border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-[#1a202c] shadow-sm overflow-hidden flex flex-col">
+                <div className="rounded-xl border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-[#1a202c] shadow-card overflow-hidden flex flex-col">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm text-[#111318] dark:text-white whitespace-nowrap">
-                            <thead className="bg-gray-50 dark:bg-slate-900 text-[#616f89] dark:text-slate-400 font-medium border-b border-[#e5e7eb] dark:border-slate-700">
+                            <thead className="bg-[#F1F5F9] dark:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold border-b border-[#e5e7eb] dark:border-slate-700 uppercase tracking-wide text-xs">
                                 <tr>
-                                    <th onClick={() => handleSort('name')} className="px-6 py-4 w-64 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('name')} className="px-6 py-4 w-64 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Tên lớp học {renderSortIcon('name')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('mode')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('mode')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Hình thức {renderSortIcon('mode')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('tuitionFee')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('tuitionFee')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Học phí {renderSortIcon('tuitionFee')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('teacher')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('teacher')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Giáo viên {renderSortIcon('teacher')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('schedule')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('schedule')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Lịch học {renderSortIcon('schedule')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('students')} className="px-6 py-4 w-48 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('students')} className="px-6 py-4 w-48 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Sĩ số {renderSortIcon('students')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('status')} className="px-6 py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('status')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Trạng thái {renderSortIcon('status')}</div>
                                     </th>
                                     <th className="px-6 py-4 text-right">Thao tác</th>
@@ -250,11 +250,11 @@ const ClassList: React.FC = () => {
                                     <tr 
                                         key={cls.id} 
                                         onClick={() => navigate(`/classes/${cls.id}`)}
-                                        className="hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors group cursor-pointer"
+                                        className="hover:bg-blue-50/50 dark:hover:bg-slate-800 even:bg-[#F8FAFC] dark:even:bg-slate-800/50 transition-colors group cursor-pointer"
                                     >
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col">
-                                                <span className="font-semibold text-[#111318] dark:text-white text-base group-hover:text-primary transition-colors">{cls.name} - {cls.code}</span>
+                                                <span className="font-semibold text-slate-800 dark:text-white text-base group-hover:text-primary transition-colors">{cls.name} - {cls.code}</span>
                                                 <div className="flex items-center gap-2 mt-1">
                                                     {getLevelBadge(cls.name)}
                                                 </div>
@@ -325,7 +325,7 @@ const ClassList: React.FC = () => {
                         <div 
                             key={cls.id} 
                             onClick={() => navigate(`/classes/${cls.id}`)}
-                            className="group relative flex flex-col justify-between rounded-xl border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-[#1a202c] p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg hover:border-primary/30 cursor-pointer"
+                            className="group relative flex flex-col justify-between rounded-xl border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-[#1a202c] p-5 shadow-subtle transition-all hover:-translate-y-1 hover:shadow-lg hover:border-primary/30 cursor-pointer"
                         >
                             <div className="mb-4 flex items-start justify-between">
                                 <div>

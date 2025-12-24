@@ -1,16 +1,18 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Header from '../components/Header';
 import StudentSelectorModal from '../components/StudentSelectorModal';
 import EditClassModal from '../components/EditClassModal';
+import MiniClassCalendar from '../components/MiniClassCalendar';
 import { useData } from '../context/DataContext';
 import Avatar from '../components/Avatar';
+import { AttendanceStatus } from '../types';
 
 const ClassDetails: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { classes, students, leads, enrollStudent, convertLeadToStudent, removeStudentFromClass, saveAttendance } = useData();
+  const { classes, students, leads, enrollStudent, convertLeadToStudent, removeStudentFromClass, saveAttendance, updateStudentNote } = useData();
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
@@ -24,368 +26,362 @@ const ClassDetails: React.FC = () => {
     return students.filter(s => s.classId === classData.id);
   }, [students, classData.id]);
 
-  // Mock State for Attendance
-  const [attendance, setAttendance] = useState<Record<string, boolean>>({});
+  // Attendance State for "Today"
+  const [todayAttendance, setTodayAttendance] = useState<Record<string, AttendanceStatus>>({});
+  const [historyModalStudent, setHistoryModalStudent] = useState<string | null>(null);
 
-  const toggleAttendance = (studentId: string) => {
-    setAttendance(prev => ({
-      ...prev,
-      [studentId]: !prev[studentId]
-    }));
+  // Initialize Today's Attendance if needed
+  useEffect(() => {
+      const today = new Date().toISOString().split('T')[0];
+      const initialStatus: Record<string, AttendanceStatus> = {};
+      classStudents.forEach(s => {
+          // Check if already has record for today
+          const record = s.attendanceHistory?.find(r => r.date === today);
+          if (record) {
+              initialStatus[s.id] = record.status;
+          }
+      });
+      if (Object.keys(initialStatus).length > 0) {
+          setTodayAttendance(prev => ({ ...prev, ...initialStatus }));
+      }
+  }, [classStudents]);
+
+  const handleAttendanceChange = (studentId: string, status: AttendanceStatus) => {
+    setTodayAttendance(prev => {
+        return { ...prev, [studentId]: status };
+    });
   };
 
   const handleSaveAttendance = () => {
-      const today = new Date().toLocaleDateString('vi-VN');
-      const result = saveAttendance(classData.id, today, attendance);
+      const today = new Date().toISOString().split('T')[0];
+      const result = saveAttendance(classData.id, today, todayAttendance);
       alert(result.message);
   };
 
+  const handleOverrideAttendance = (studentId: string, date: string, newStatus: AttendanceStatus) => {
+      const updatePayload: Record<string, AttendanceStatus> = { [studentId]: newStatus };
+      saveAttendance(classData.id, date, updatePayload);
+      alert(`Đã cập nhật điểm danh ngày ${new Date(date).toLocaleDateString()}!`);
+  };
+
+  const handleNoteBlur = (studentId: string, e: React.FocusEvent<HTMLInputElement>) => {
+      if (e.target.value !== e.target.defaultValue) {
+          updateStudentNote(studentId, e.target.value);
+      }
+  };
+
   const handleAddStudents = (selectedStudents: any[], selectedLeads: any[]) => {
-      // 1. Enroll existing students
-      selectedStudents.forEach(s => {
-          enrollStudent(s.id, classData.id);
-      });
-
-      // 2. Convert and enroll leads
-      selectedLeads.forEach(l => {
-          convertLeadToStudent(l.id, classData.id, classData.tuitionFee);
-      });
-
+      selectedStudents.forEach(s => enrollStudent(s.id, classData.id));
+      selectedLeads.forEach(l => convertLeadToStudent(l.id, classData.id, classData.tuitionFee));
       setShowAddStudent(false);
   };
 
   const handleRemoveStudent = (studentId: string) => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa học viên này khỏi lớp? Học viên sẽ được đưa về danh sách chờ xếp lớp.")) {
+    if (window.confirm("Bạn có chắc chắn muốn xóa học viên này khỏi lớp?")) {
         removeStudentFromClass(studentId, classData.id);
     }
   };
 
-  // Helper to get Lead Source for a student
-  const getStudentSource = (leadId?: string) => {
-      if (!leadId) return 'Vãng lai';
-      const lead = leads.find(l => l.id === leadId);
-      return lead ? lead.source : 'Không rõ';
+  // Logic: Total Past Sessions based on Schedule & Start Date
+  const totalPastSessions = useMemo(() => {
+      if (!classData.startDate) return 0;
+      
+      const start = new Date(classData.startDate);
+      const today = new Date();
+      // Remove time part
+      today.setHours(0,0,0,0);
+      start.setHours(0,0,0,0);
+
+      if (today < start) return 0;
+
+      // Parse schedule days e.g. "T2 / T4"
+      const [daysPart] = classData.schedule.split('•');
+      const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
+      const targetDays = daysPart.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined);
+
+      let count = 0;
+      let loopDate = new Date(start);
+      while (loopDate <= today) {
+          if (targetDays.includes(loopDate.getDay())) {
+              count++;
+          }
+          loopDate.setDate(loopDate.getDate() + 1);
+      }
+      return count;
+  }, [classData]);
+
+  // Helper: Calculate Dynamic Class Progress
+  const calculateClassProgress = () => {
+      if (!classData.startDate || !classData.endDate) return classData.progress; 
+      
+      const start = new Date(classData.startDate).getTime();
+      const end = new Date(classData.endDate).getTime();
+      const now = new Date().getTime();
+
+      if (now < start) return 0;
+      if (now > end) return 100;
+
+      const totalDuration = end - start;
+      const elapsed = now - start;
+      return Math.round((elapsed / totalDuration) * 100);
   };
 
-  // Helper to get Tuition Status
-  const getTuitionStatus = (student: any) => {
-      const balance = student.balance || 0;
-      if (balance <= 0) return { label: 'Đã đóng', color: 'text-emerald-600 bg-emerald-50', icon: 'check' };
-      if (balance < classData.tuitionFee) return { label: `Thiếu ${new Intl.NumberFormat('vi-VN').format(balance)}đ`, color: 'text-secondary bg-orange-50', icon: 'pending' };
-      return { label: 'Chưa đóng', color: 'text-rose-600 bg-rose-50', icon: 'warning' };
-  };
+  const dynamicProgress = useMemo(() => calculateClassProgress(), [classData]);
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display">
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display text-base">
       <Header title="Chi tiết Lớp học" />
       
-      <main className="flex-1 overflow-y-auto p-6 lg:p-8 scroll-smooth">
-        <div className="max-w-7xl mx-auto flex flex-col gap-6">
+      <main className="flex-1 overflow-y-auto p-6 lg:p-10 scroll-smooth">
+        <div className="max-w-[2000px] mx-auto flex flex-col gap-8">
             
-            {/* Breadcrumbs */}
-            <nav className="flex text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
-                <span onClick={() => navigate('/')} className="hover:text-primary transition-colors cursor-pointer">Trang chủ</span>
-                <span className="mx-2 text-slate-300 dark:text-slate-600">/</span>
-                <span onClick={() => navigate('/classes')} className="hover:text-primary transition-colors cursor-pointer">Danh sách lớp</span>
-                <span className="mx-2 text-slate-300 dark:text-slate-600">/</span>
-                <span className="text-slate-900 dark:text-white">{classData.name} - {classData.code}</span>
-            </nav>
-
-            {/* Title & Actions */}
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-3 mb-1">
-                        <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{classData.name} - {classData.code}</h2>
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                            classData.status === 'active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' :
-                            classData.status === 'upcoming' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800' :
-                            'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-700'
-                        }`}>
-                            {classData.status === 'active' ? 'Đang hoạt động' : classData.status === 'upcoming' ? 'Sắp khai giảng' : 'Đầy lớp'}
-                        </span>
+            {/* 1. Header Area: Scorecards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* Identity Card */}
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-subtle flex flex-col justify-between">
+                    <div>
+                        <div className="flex justify-between items-start">
+                            <h2 className="text-xl font-bold text-slate-800 dark:text-white leading-tight truncate pr-2">{classData.name}</h2>
+                            <span className={`px-3 py-1 rounded text-xs font-bold uppercase border ${classData.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
+                                {classData.status === 'active' ? 'Đang học' : classData.status}
+                            </span>
+                        </div>
+                        <p className="text-sm text-slate-500 font-mono mt-1.5">{classData.code}</p>
                     </div>
-                    <p className="text-slate-500 dark:text-slate-400 flex items-center gap-2 text-sm">
-                        <span className="material-symbols-outlined text-[18px]">calendar_today</span>
-                        Khai giảng: 01/10/2023 • Kết thúc dự kiến: 15/12/2023
-                    </p>
+                    <div className="flex items-center gap-2 mt-4 text-sm text-slate-600 dark:text-slate-400 font-medium">
+                        <span className="material-symbols-outlined text-[20px]">calendar_month</span>
+                        {classData.schedule}
+                    </div>
                 </div>
-                <div className="flex gap-3">
-                    <button className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-[#1a202c] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all">
-                        <span className="material-symbols-outlined text-[20px]">file_download</span>
-                        Xuất dữ liệu
+
+                {/* Enrollment Card */}
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-subtle flex items-center justify-between">
+                    <div>
+                        <p className="text-slate-500 text-sm font-bold uppercase tracking-wider">Sĩ số thực tế</p>
+                        <div className="flex items-baseline gap-1 mt-2">
+                            <span className="text-4xl font-extrabold text-slate-900 dark:text-white">{classStudents.length}</span>
+                            <span className="text-lg text-slate-400 font-medium">/ {classData.maxStudents}</span>
+                        </div>
+                    </div>
+                    <div className="size-14 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600">
+                        <span className="material-symbols-outlined text-[32px]">groups</span>
+                    </div>
+                </div>
+
+                {/* Progress Card */}
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-subtle flex items-center justify-between">
+                    <div>
+                        <p className="text-slate-500 text-sm font-bold uppercase tracking-wider">Tiến độ lớp</p>
+                        <div className="flex items-baseline gap-1 mt-2">
+                            <span className="text-4xl font-extrabold text-slate-900 dark:text-white">{totalPastSessions}</span>
+                            <span className="text-lg text-slate-400 font-medium">buổi đã qua</span>
+                        </div>
+                    </div>
+                    <div className="relative size-14 flex items-center justify-center">
+                        <svg className="size-full -rotate-90" viewBox="0 0 36 36">
+                            <path className="text-gray-100 dark:text-gray-700" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
+                            <path className="text-green-500" strokeDasharray={`${dynamicProgress}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
+                        </svg>
+                        <span className="absolute text-xs font-bold text-green-600">{dynamicProgress}%</span>
+                    </div>
+                </div>
+
+                {/* Actions Card */}
+                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-subtle flex flex-col justify-center gap-3">
+                    <button 
+                        onClick={() => setShowAddStudent(true)}
+                        className="w-full py-2.5 bg-primary hover:bg-primary-dark text-white text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm active:scale-95"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">person_add</span>
+                        Thêm học viên
                     </button>
                     <button 
                         onClick={() => setIsEditModalOpen(true)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-[#1a202c] border border-primary text-primary rounded-lg text-sm font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/10 shadow-sm transition-all"
+                        className="w-full py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-2 active:scale-95"
                     >
-                        <span className="material-symbols-outlined text-[20px]">edit</span>
-                        Chỉnh sửa thông tin
+                        <span className="material-symbols-outlined text-[20px]">settings</span>
+                        Cài đặt lớp
                     </button>
                 </div>
             </div>
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white dark:bg-[#1a202c] p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <span className="material-symbols-outlined text-6xl text-primary">groups</span>
-                    </div>
-                    <div>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">Sĩ số lớp</p>
-                        <p className="text-3xl font-bold text-slate-900 dark:text-white">{classData.students}<span className="text-slate-400 text-xl font-normal">/{classData.maxStudents}</span></p>
-                    </div>
-                    <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
-                        <div className="bg-primary h-full rounded-full" style={{width: `${(classData.students / classData.maxStudents) * 100}%`}}></div>
-                    </div>
+            {/* 2. Main Body: Advanced Tracking Table (Full Width) */}
+            <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200 dark:border-slate-700 shadow-card overflow-hidden flex flex-col">
+                <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-white dark:bg-slate-800">
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
+                        <span className="material-symbols-outlined text-primary text-[28px]">school</span>
+                        Bảng Tình hình Học tập
+                    </h3>
+                    <button 
+                        onClick={handleSaveAttendance}
+                        className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-secondary hover:bg-orange-600 text-white rounded-xl shadow-sm transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-[22px]">save</span>
+                        Lưu Cập nhật
+                    </button>
                 </div>
-                <div className="bg-white dark:bg-[#1a202c] p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <span className="material-symbols-outlined text-6xl text-emerald-600">check_circle</span>
-                    </div>
-                    <div>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">Tiến độ khóa học</p>
-                        <p className="text-3xl font-bold text-slate-900 dark:text-white">{classData.progress}%</p>
-                    </div>
-                    <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
-                        <div className="bg-emerald-600 h-full rounded-full" style={{width: `${classData.progress}%`}}></div>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-[#1a202c] p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden group">
-                    <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <span className="material-symbols-outlined text-6xl text-secondary">assignment</span>
-                    </div>
-                    <div>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">Bài kiểm tra tới</p>
-                        <p className="text-xl font-bold text-slate-900 dark:text-white truncate">Kiểm tra giữa kỳ (A1)</p>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2 text-secondary text-sm font-medium">
-                        <span className="material-symbols-outlined text-[18px]">schedule</span>
-                        15/11/2023 (Còn 3 ngày)
-                    </div>
+                
+                <div className="overflow-x-auto max-h-[700px] relative">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-[#F1F5F9] dark:bg-slate-900 text-sm uppercase text-slate-600 dark:text-slate-400 font-bold tracking-wide sticky top-0 z-20 shadow-sm">
+                            <tr>
+                                <th className="px-5 py-4 text-center w-16 border-r border-slate-200 dark:border-slate-700">STT</th>
+                                <th className="px-5 py-4 w-32">Mã HV</th>
+                                <th className="px-5 py-4 min-w-[240px]">Họ và tên</th>
+                                <th className="px-5 py-4 w-40">Số ĐT</th>
+                                <th className="px-5 py-4 text-center w-40">Chuyên cần</th>
+                                <th className="px-5 py-4 w-[240px] text-center">Điểm danh hôm nay</th>
+                                <th className="px-5 py-4 text-center w-28">Test 1</th>
+                                <th className="px-5 py-4 text-center w-28">Test 2</th>
+                                <th className="px-5 py-4 text-center w-28 font-extrabold text-slate-800 dark:text-white">ĐTB</th>
+                                <th className="px-5 py-4 min-w-[240px]">Ghi chú</th>
+                                <th className="px-5 py-4 w-16"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-base">
+                            {classStudents.map((student, idx) => {
+                                // Calculate Attendance Logic
+                                const presentCount = student.attendanceHistory?.filter(h => h.status === 'present').length || 0;
+                                const absenceRate = totalPastSessions > 0 ? 1 - (presentCount / totalPastSessions) : 0;
+                                const isWarning = absenceRate > 0.2; // Warning if missed > 20%
+
+                                // Scores
+                                const score1 = student.scores?.[0]?.value || '-';
+                                const score2 = student.scores?.[1]?.value || '-';
+
+                                return (
+                                    <tr 
+                                        key={student.id} 
+                                        className={`group even:bg-[#F8FAFC] dark:even:bg-slate-800/50 hover:bg-blue-50/50 dark:hover:bg-slate-800 transition-colors ${isWarning ? 'bg-red-50/30 dark:bg-red-900/10' : ''}`}
+                                    >
+                                        <td className="px-5 py-4 text-center font-medium text-slate-500 border-r border-slate-100 dark:border-slate-800">{idx + 1}</td>
+                                        <td className="px-5 py-4 font-mono text-sm text-slate-500 font-medium">{student.code}</td>
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center gap-4">
+                                                <Avatar src={student.avatar} name={student.name} className="size-10 text-sm border border-slate-200" />
+                                                <span className="font-bold text-slate-800 dark:text-white text-base">{student.name}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-4 text-slate-600 dark:text-slate-400 text-sm">{student.phone}</td>
+                                        
+                                        {/* Attendance Stats Cell */}
+                                        <td className="px-5 py-4 text-center">
+                                            <div 
+                                                onClick={() => setHistoryModalStudent(student.id)}
+                                                className={`inline-flex flex-col items-center cursor-pointer hover:scale-105 transition-transform px-3 py-1.5 rounded-lg border ${isWarning ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-white text-slate-700'}`}
+                                                title="Click xem chi tiết"
+                                            >
+                                                <span className="text-sm font-extrabold">{presentCount} / {totalPastSessions}</span>
+                                                <div className="w-20 h-1.5 bg-slate-200 rounded-full mt-1.5 overflow-hidden">
+                                                    <div 
+                                                        className={`h-full ${isWarning ? 'bg-red-500' : 'bg-green-500'}`} 
+                                                        style={{width: `${totalPastSessions > 0 ? (presentCount/totalPastSessions)*100 : 100}%`}}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        {/* Quick Attendance */}
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center justify-center gap-2">
+                                                {['present', 'excused', 'unexcused'].map((status) => (
+                                                    <button 
+                                                        key={status}
+                                                        onClick={() => handleAttendanceChange(student.id, status as AttendanceStatus)}
+                                                        className={`size-9 rounded-lg flex items-center justify-center font-bold text-sm transition-all border-2 ${
+                                                            todayAttendance[student.id] === status 
+                                                            ? (status === 'present' ? 'bg-green-600 text-white border-green-600 shadow-md' : status === 'excused' ? 'bg-orange-500 text-white border-orange-500 shadow-md' : 'bg-red-600 text-white border-red-600 shadow-md')
+                                                            : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-400'
+                                                        }`}
+                                                        title={status === 'present' ? 'Có mặt' : status === 'excused' ? 'Có phép' : 'Vắng'}
+                                                    >
+                                                        {status === 'present' ? 'P' : status === 'excused' ? 'CP' : 'KP'}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </td>
+
+                                        {/* Scores */}
+                                        <td className="px-5 py-4 text-center text-slate-700 dark:text-slate-300 font-mono font-medium">{score1}</td>
+                                        <td className="px-5 py-4 text-center text-slate-700 dark:text-slate-300 font-mono font-medium">{score2}</td>
+                                        <td className="px-5 py-4 text-center font-bold text-primary text-lg">{student.averageScore}</td>
+
+                                        {/* Notes */}
+                                        <td className="px-5 py-4">
+                                            <input 
+                                                type="text" 
+                                                defaultValue={student.teacherNote}
+                                                onBlur={(e) => handleNoteBlur(student.id, e)}
+                                                className="w-full bg-transparent border-b border-dashed border-slate-300 dark:border-slate-700 text-sm py-1.5 focus:border-primary focus:ring-0 placeholder-slate-400"
+                                                placeholder="..."
+                                            />
+                                        </td>
+
+                                        <td className="px-5 py-4 text-right">
+                                            <button 
+                                                onClick={() => handleRemoveStudent(student.id)}
+                                                className="text-slate-400 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <span className="material-symbols-outlined text-[20px]">delete</span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {classStudents.length === 0 && (
+                                <tr><td colSpan={11} className="py-12 text-center text-slate-500 italic text-lg">Chưa có học viên nào.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                <div className="lg:col-span-8 flex flex-col gap-6">
-                    {/* Student List */}
-                    <div className="bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
-                        <div className="p-5 border-b border-slate-100 dark:border-slate-700">
-                            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Danh sách Học viên</h3>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm text-slate-500 dark:text-slate-400">Tổng số: <strong className="text-slate-900 dark:text-white">{classData.students}</strong></span>
-                                    <button className="p-1.5 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded border border-slate-200 dark:border-slate-700" title="Bộ lọc">
-                                        <span className="material-symbols-outlined text-[20px]">filter_list</span>
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="flex flex-col sm:flex-row gap-3">
-                                <div className="relative group bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-all flex-1">
-                                    <div className="flex items-center gap-3 px-2">
-                                        <span className="material-symbols-outlined text-primary">person_add</span>
-                                        <input 
-                                            className="w-full bg-transparent border-none text-sm focus:ring-0 text-slate-900 dark:text-white placeholder-slate-500 py-1.5" 
-                                            placeholder="Thêm học viên trực tiếp..." 
-                                            type="text"
-                                            readOnly
-                                            onClick={() => setShowAddStudent(true)}
-                                        />
-                                        <button 
-                                            onClick={() => setShowAddStudent(true)}
-                                            className="text-xs font-semibold bg-primary text-white px-3 py-1.5 rounded shadow-sm hover:bg-blue-700 transition-colors"
-                                        >
-                                            Thêm
-                                        </button>
-                                    </div>
-                                </div>
-                                <button 
-                                    onClick={handleSaveAttendance}
-                                    className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800 rounded-lg text-sm font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shadow-sm"
-                                >
-                                    <span className="material-symbols-outlined text-[18px]">save_as</span>
-                                    Lưu điểm danh
-                                </button>
-                            </div>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700 text-xs uppercase text-slate-500 dark:text-slate-400 font-semibold tracking-wide">
-                                        <th className="px-6 py-4">Học viên</th>
-                                        <th className="px-6 py-4">Nguồn Lead</th>
-                                        <th className="px-6 py-4">Học phí</th>
-                                        <th className="px-6 py-4 text-center w-32">Điểm danh<br/><span className="text-[10px] normal-case opacity-70">Hôm nay</span></th>
-                                        <th className="px-6 py-4 w-10"></th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
-                                    {classStudents.map(student => {
-                                        const tStatus = getTuitionStatus(student);
-                                        const source = getStudentSource(student.leadId);
-                                        return (
-                                            <tr key={student.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <Avatar src={student.avatar} name={student.name} className="size-9 border border-slate-200 dark:border-slate-600" />
-                                                        <div>
-                                                            <p className="font-medium text-slate-900 dark:text-white group-hover:text-primary transition-colors">{student.name}</p>
-                                                            <p className="text-xs text-slate-500 dark:text-slate-400">{student.phone}</p>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs font-medium border border-blue-100 dark:border-blue-900/30">
-                                                        <span className="material-symbols-outlined text-[14px]">social_leaderboard</span>
-                                                        {source}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded border border-transparent ${tStatus.color}`}>
-                                                        <span className="material-symbols-outlined text-[14px]">{tStatus.icon}</span>
-                                                        {tStatus.label}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                                                    <label className="inline-flex items-center cursor-pointer">
-                                                        <input 
-                                                            checked={!!attendance[student.id]} 
-                                                            onChange={() => toggleAttendance(student.id)}
-                                                            className="form-checkbox size-5 text-primary rounded border-slate-300 focus:ring-primary/50" type="checkbox"
-                                                        />
-                                                    </label>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleRemoveStudent(student.id); }}
-                                                        className="text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                        title="Xóa khỏi lớp"
-                                                    >
-                                                        <span className="material-symbols-outlined text-[20px]">delete</span>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                    {classStudents.length === 0 && (
-                                        <tr>
-                                            <td colSpan={5} className="px-6 py-8 text-center text-slate-500 dark:text-slate-400 italic">
-                                                Chưa có học viên nào trong lớp này.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex justify-center">
-                            <button className="text-sm text-primary font-medium hover:text-blue-700 dark:hover:text-blue-400 transition-colors">Xem tất cả {classStudents.length} học viên</button>
+            {/* 3. Bottom Section: Info & Calendar */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {/* Left: Teacher & Info */}
+                <div className="flex flex-col gap-6">
+                    <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200 dark:border-slate-700 shadow-subtle p-8 flex flex-col items-center text-center">
+                        <Avatar src={classData.teacherAvatar} name={classData.teacher} className="size-24 mb-4 border-4 border-slate-50 dark:border-slate-800 shadow-sm text-3xl" />
+                        <h4 className="text-xl font-bold text-slate-900 dark:text-white">{classData.teacher}</h4>
+                        <p className="text-sm text-slate-500 uppercase tracking-wide mb-6">Giáo viên chủ nhiệm</p>
+                        <div className="flex gap-3 w-full">
+                            <button className="flex-1 py-2.5 rounded-xl bg-blue-50 text-blue-700 text-sm font-bold hover:bg-blue-100 transition-colors border border-blue-100">Gửi Email</button>
+                            <button className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-bold hover:bg-slate-200 transition-colors border border-slate-200">Liên hệ</button>
                         </div>
                     </div>
-
-                    {/* Curriculum Section (Existing) */}
-                    <div className="bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                        <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Lộ trình học tập & Điểm danh</h3>
-                            <button className="text-sm text-primary font-medium hover:underline">Mở rộng toàn bộ</button>
-                        </div>
-                        {/* Mock Curriculum Items */}
-                        <div className="divide-y divide-slate-100 dark:divide-slate-700">
-                            <div className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                                <div className="flex items-start gap-4">
-                                    <div className="flex-shrink-0 w-16 text-center">
-                                        <span className="block text-xs text-slate-500 dark:text-slate-400 font-bold uppercase">Buổi</span>
-                                        <span className="block text-xl font-bold text-primary">01</span>
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <h4 className="font-bold text-slate-900 dark:text-white">Giới thiệu & Bảng chữ cái</h4>
-                                            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-100 dark:border-emerald-900/30">Đã hoàn thành</span>
-                                        </div>
-                                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-2">
-                                            <span className="material-symbols-outlined text-[16px]">calendar_month</span> 01/10/2023 
-                                            <span className="text-slate-300 dark:text-slate-600">|</span>
-                                            <span className="material-symbols-outlined text-[16px]">schedule</span> 18:00 - 19:30
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="lg:col-span-4 flex flex-col gap-6">
-                    {/* General Info */}
-                    <div className="bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wide mb-4 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-primary text-[20px]">info</span>
-                            Thông tin chung
-                        </h3>
+                    
+                    <div className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200 dark:border-slate-700 shadow-subtle p-8">
+                        <h4 className="font-bold text-slate-900 dark:text-white mb-5 text-lg">Thông tin bổ sung</h4>
                         <ul className="space-y-4 text-sm">
-                            <li className="flex justify-between">
-                                <span className="text-slate-500 dark:text-slate-400">Cấp độ</span>
-                                <span className="font-semibold text-slate-900 dark:text-white">{classData.name.includes('A1') ? 'A1 (Cơ bản)' : classData.name.includes('A2') ? 'A2 (Sơ cấp)' : 'Trung cấp'}</span>
+                            <li className="flex justify-between border-b border-dashed border-slate-200 pb-3">
+                                <span className="text-slate-500">Ngày khai giảng</span>
+                                <span className="font-bold text-slate-900 dark:text-white">{classData.startDate ? new Date(classData.startDate).toLocaleDateString('vi-VN') : 'N/A'}</span>
+                            </li>
+                            <li className="flex justify-between border-b border-dashed border-slate-200 pb-3">
+                                <span className="text-slate-500">Dự kiến kết thúc</span>
+                                <span className="font-bold text-slate-900 dark:text-white">{classData.endDate ? new Date(classData.endDate).toLocaleDateString('vi-VN') : 'N/A'}</span>
                             </li>
                             <li className="flex justify-between">
-                                <span className="text-slate-500 dark:text-slate-400">Hình thức</span>
-                                <span className="font-semibold text-slate-900 dark:text-white flex items-center gap-1">
-                                    <span className="material-symbols-outlined text-[16px]">{classData.mode === 'online' ? 'wifi' : 'apartment'}</span> 
-                                    {classData.mode === 'online' ? 'Online' : 'Offline'}
-                                </span>
-                            </li>
-                            {classData.mode === 'online' ? (
-                                <li className="flex justify-between items-center">
-                                    <span className="text-slate-500 dark:text-slate-400">Link học</span>
-                                    <a href={classData.link} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline truncate max-w-[150px] flex items-center gap-1">
-                                        Vào lớp
-                                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-                                    </a>
-                                </li>
-                            ) : (
-                                <li className="flex flex-col gap-1">
-                                    <span className="text-slate-500 dark:text-slate-400">Địa điểm</span>
-                                    <span className="font-medium text-slate-900 dark:text-white flex items-start gap-1">
-                                        <span className="material-symbols-outlined text-[16px] mt-0.5 text-slate-400">location_on</span>
-                                        {classData.location}
-                                    </span>
-                                </li>
-                            )}
-                            <li className="flex justify-between">
-                                <span className="text-slate-500 dark:text-slate-400">Lịch học</span>
-                                <span className="font-semibold text-slate-900 dark:text-white">{classData.schedule}</span>
+                                <span className="text-slate-500">Địa điểm</span>
+                                <span className="font-bold text-slate-900 dark:text-white text-right max-w-[180px] leading-tight">{classData.location || 'Online'}</span>
                             </li>
                         </ul>
                     </div>
+                </div>
 
-                    {/* Teacher Info */}
-                    <div className="bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wide">Giảng viên phụ trách</h3>
-                            <button className="text-slate-400 hover:text-primary">
-                                <span className="material-symbols-outlined text-[20px]">edit</span>
-                            </button>
-                        </div>
-                        <div className="flex items-center gap-4 mb-6">
-                            <Avatar src={classData.teacherAvatar} name={classData.teacher} className="size-14 border-2 border-white dark:border-slate-600 shadow-md text-xl" />
-                            <div>
-                                <p className="text-base font-bold text-slate-900 dark:text-white">{classData.teacher}</p>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">Giáo viên chính</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <button className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
-                                <span className="material-symbols-outlined text-[18px]">mail</span>
-                                Email
-                            </button>
-                            <button className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
-                                <span className="material-symbols-outlined text-[18px]">call</span>
-                                Gọi
-                            </button>
-                        </div>
-                    </div>
+                {/* Right: Calendar (Takes 2 cols) */}
+                <div className="md:col-span-2 h-full">
+                    <MiniClassCalendar 
+                        classData={classData} 
+                        onAttendanceClick={(date) => alert(`Chức năng điểm danh nhanh cho ngày ${new Date(date).toLocaleDateString()} đang được cập nhật.`)}
+                    />
                 </div>
             </div>
+
         </div>
       </main>
 
+      {/* Modals */}
       {showAddStudent && (
           <StudentSelectorModal 
             onClose={() => setShowAddStudent(false)}
@@ -395,12 +391,60 @@ const ClassDetails: React.FC = () => {
           />
       )}
 
-      {/* Edit Class Modal */}
       {isEditModalOpen && (
           <EditClassModal 
             classData={classData}
             onClose={() => setIsEditModalOpen(false)}
           />
+      )}
+
+      {/* History/Override Modal */}
+      {historyModalStudent && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6 backdrop-blur-sm">
+              <div className="bg-white dark:bg-[#1a202c] w-full max-w-xl rounded-2xl p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex justify-between items-center mb-8">
+                      <div>
+                          <h3 className="text-xl font-bold text-slate-900 dark:text-white">Lịch sử điểm danh</h3>
+                          <p className="text-sm text-slate-500 mt-1">Học viên: <span className="font-bold text-primary text-base">{students.find(s => s.id === historyModalStudent)?.name}</span></p>
+                      </div>
+                      <button onClick={() => setHistoryModalStudent(null)} className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100"><span className="material-symbols-outlined text-2xl">close</span></button>
+                  </div>
+                  
+                  <div className="max-h-[500px] overflow-y-auto custom-scrollbar flex flex-col gap-3">
+                      {students.find(s => s.id === historyModalStudent)?.attendanceHistory?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((record, idx) => (
+                          <div key={idx} className="flex justify-between items-center p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 hover:border-primary/30 transition-colors">
+                              <span className="text-base font-bold text-slate-700 dark:text-slate-300 flex items-center gap-3">
+                                  <span className="material-symbols-outlined text-[20px] text-slate-400">calendar_today</span>
+                                  {new Date(record.date).toLocaleDateString('vi-VN')}
+                              </span>
+                              
+                              <div className="flex gap-1.5">
+                                  {['present', 'excused', 'unexcused'].map((status) => (
+                                      <button 
+                                          key={status}
+                                          onClick={() => handleOverrideAttendance(historyModalStudent, record.date, status as AttendanceStatus)}
+                                          className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all border-2 ${
+                                              record.status === status 
+                                              ? (status === 'present' ? 'bg-green-100 text-green-700 border-green-200' : status === 'excused' ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-red-100 text-red-700 border-red-200')
+                                              : 'bg-white text-slate-400 border-transparent hover:bg-slate-100'
+                                          }`}
+                                      >
+                                          {status === 'present' ? 'Có mặt' : status === 'excused' ? 'Có phép' : 'Vắng'}
+                                      </button>
+                                  ))}
+                              </div>
+                          </div>
+                      ))}
+                      {(!students.find(s => s.id === historyModalStudent)?.attendanceHistory?.length) && (
+                          <p className="text-center text-slate-400 italic py-6">Chưa có dữ liệu điểm danh.</p>
+                      )}
+                  </div>
+                  
+                  <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700 text-right">
+                      <button onClick={() => setHistoryModalStudent(null)} className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors">Đóng</button>
+                  </div>
+              </div>
+          </div>
       )}
     </div>
   );
