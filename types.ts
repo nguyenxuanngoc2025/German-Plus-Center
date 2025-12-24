@@ -22,8 +22,9 @@ export interface ClassItem {
   name: string;
   code: string;
   schedule: string; // e.g. "Thứ 2-4-6"
-  status: 'active' | 'upcoming' | 'full';
+  status: 'active' | 'upcoming' | 'full' | 'finished' | 'paused'; // Expanded statuses
   mode: 'online' | 'offline';
+  level?: string; // New: Specific Level (A1, B1...)
   teacher: string;
   teacherAvatar: string;
   students: number; // Current Enrollment (Ideally redundant if calculated, but kept for list views)
@@ -34,6 +35,8 @@ export interface ClassItem {
   link?: string; // Meeting link for online
   startDate?: string; // ISO Date YYYY-MM-DD
   endDate?: string;   // ISO Date YYYY-MM-DD
+  offDays?: string[]; // List of ISO dates where class is cancelled/shifted
+  extraSessions?: { date: string; note?: string }[]; // NEW: List of rescheduled/extra sessions (ISO DateTime)
 }
 
 export type AttendanceStatus = 'present' | 'excused' | 'unexcused';

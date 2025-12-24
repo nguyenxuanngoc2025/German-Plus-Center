@@ -3,44 +3,47 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
+import AdvancedFilterBar, { FilterState } from '../components/AdvancedFilterBar';
 
 const ExpenseList: React.FC = () => {
   const navigate = useNavigate();
-  const { finance } = useData(); // Use live finance data
+  const { finance } = useData(); 
+  
+  // --- UNIFIED FILTER STATE ---
+  const [filters, setFilters] = useState<FilterState>({
+      startDate: '', endDate: '', compareDateStart: '', compareDateEnd: '', isCompare: false,
+      source: 'all', classType: 'all', classId: 'all', status: 'all'
+  });
+  
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('this_month');
+  // We can use a local category filter or integrate it if needed. 
+  // For now, keep local category filter simple as AdvancedFilterBar focuses on major entities.
   const [categoryFilter, setCategoryFilter] = useState('all');
 
   // --- HELPER: DATE LOGIC ---
   const isInRange = (dateStr: string) => {
+      if (!filters.startDate || !filters.endDate) return true;
       const date = new Date(dateStr);
-      const now = new Date();
-      if (dateFilter === 'this_month') return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-      if (dateFilter === 'last_month') {
-          const last = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          return date.getMonth() === last.getMonth() && date.getFullYear() === last.getFullYear();
-      }
-      if (dateFilter === 'this_year') return date.getFullYear() === now.getFullYear();
-      return true;
+      const start = new Date(filters.startDate); start.setHours(0,0,0,0);
+      const end = new Date(filters.endDate); end.setHours(23,59,59,999);
+      return date >= start && date <= end;
   };
 
   // --- FILTER DATA ---
   const expenseList = useMemo(() => {
-      // Filter only expenses from global finance records
       return finance.filter(f => f.type === 'expense').filter(f => {
           const matchDate = isInRange(f.date);
           const matchCategory = categoryFilter === 'all' || f.category === categoryFilter;
           const matchSearch = searchTerm === '' || f.description.toLowerCase().includes(searchTerm.toLowerCase());
           return matchDate && matchCategory && matchSearch;
       }).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [finance, dateFilter, categoryFilter, searchTerm]);
+  }, [finance, filters.startDate, filters.endDate, categoryFilter, searchTerm]);
 
   // --- STATS ---
   const stats = useMemo(() => {
       return {
           total: expenseList.reduce((acc, e) => acc + e.amount, 0),
           count: expenseList.length,
-          // Mocking "Pending" status as it's not in the base model yet, assuming all recorded expenses are paid/committed
           pending: 0 
       };
   }, [expenseList]);
@@ -63,6 +66,14 @@ const ExpenseList: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display">
       <Header title="Danh sách Chi phí" />
+      
+      {/* UNIFIED FILTER BAR */}
+      <AdvancedFilterBar 
+        onFilterChange={setFilters}
+        showDate={true}
+        showCompare={false}
+        className="border-b border-slate-200 dark:border-slate-700"
+      />
       
       <main className="flex-1 overflow-y-auto p-6 md:p-8">
         <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
@@ -100,8 +111,8 @@ const ExpenseList: React.FC = () => {
               </div>
           </div>
 
-          {/* FILTER BAR */}
-          <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col lg:flex-row gap-4 justify-between items-center sticky top-0 z-20">
+          {/* LOCAL SEARCH & CATEGORY */}
+          <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col lg:flex-row gap-4 justify-between items-center sticky top-0 z-10">
             <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
               <div className="relative w-full sm:w-64">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
@@ -112,16 +123,6 @@ const ExpenseList: React.FC = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <select 
-                  className="h-10 pl-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-white focus:ring-primary cursor-pointer"
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value)}
-              >
-                  <option value="this_month">Tháng này</option>
-                  <option value="last_month">Tháng trước</option>
-                  <option value="this_year">Năm nay</option>
-                  <option value="all">Toàn thời gian</option>
-              </select>
               <select 
                   className="h-10 pl-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-white focus:ring-primary cursor-pointer"
                   value={categoryFilter}
@@ -183,7 +184,7 @@ const ExpenseList: React.FC = () => {
                     </tr>
                   ))}
                   {expenseList.length === 0 && (
-                      <tr><td colSpan={6} className="py-8 text-center text-slate-500">Không tìm thấy khoản chi nào.</td></tr>
+                      <tr><td colSpan={6} className="py-8 text-center text-slate-500">Không tìm thấy khoản chi nào trong giai đoạn này.</td></tr>
                   )}
                 </tbody>
               </table>

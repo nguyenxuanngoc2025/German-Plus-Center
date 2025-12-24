@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import Avatar from './Avatar';
+import InvoicePrintModal from './InvoicePrintModal';
 
 interface Props {
   invoice: {
@@ -21,6 +22,7 @@ interface Props {
 
 const InvoiceDetailModal: React.FC<Props> = ({ invoice, onClose }) => {
   const { finance, tuition, updateTuition } = useData();
+  const [isPrintOpen, setIsPrintOpen] = useState(false);
   
   // LIVE DATA: Find the actual invoice record from context to ensure real-time updates
   const liveInvoice = useMemo(() => {
@@ -46,11 +48,16 @@ const InvoiceDetailModal: React.FC<Props> = ({ invoice, onClose }) => {
       onClose();
   };
 
+  const handleDownloadPDF = () => {
+      alert("Đang tạo file PDF... (Tính năng mô phỏng)");
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111318]/60 p-4 backdrop-blur-sm transition-opacity duration-300">
       <div className="bg-white dark:bg-[#1a202c] w-full max-w-[800px] max-h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 border border-slate-200 dark:border-slate-700 relative">
         
@@ -65,9 +72,34 @@ const InvoiceDetailModal: React.FC<Props> = ({ invoice, onClose }) => {
                 <p className="text-xs text-slate-500 font-mono">#{invoice.id}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-            <span className="material-symbols-outlined">close</span>
-          </button>
+          
+          <div className="flex items-center gap-1">
+              <button 
+                onClick={() => setIsPrintOpen(true)}
+                className="p-2 text-slate-500 hover:text-primary hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                title="In Phiếu thu"
+              >
+                <span className="material-symbols-outlined text-[20px]">print</span>
+              </button>
+              <button 
+                onClick={handleDownloadPDF}
+                className="p-2 text-slate-500 hover:text-primary hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                title="Tải xuống PDF"
+              >
+                <span className="material-symbols-outlined text-[20px]">download</span>
+              </button>
+              <button 
+                onClick={() => setIsPrintOpen(true)} // Reusing Print Modal as "Expand/View Full"
+                className="p-2 text-slate-500 hover:text-primary hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                title="Xem bản in đầy đủ"
+              >
+                <span className="material-symbols-outlined text-[20px]">open_in_full</span>
+              </button>
+              <div className="h-6 w-px bg-slate-200 dark:bg-slate-600 mx-2"></div>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+          </div>
         </div>
 
         {/* Content - Scrollable */}
@@ -169,23 +201,42 @@ const InvoiceDetailModal: React.FC<Props> = ({ invoice, onClose }) => {
         </div>
 
         {/* Footer - Fixed bottom */}
-        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex justify-end gap-3 shrink-0">
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex justify-between items-center shrink-0">
             <button 
-                onClick={onClose}
-                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                onClick={() => setIsPrintOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg text-primary dark:text-blue-300 text-sm font-bold shadow-sm hover:bg-blue-50 dark:hover:bg-slate-600 transition-colors"
             >
-                Đóng
+                <span className="material-symbols-outlined text-[18px]">print</span>
+                Xem phiếu thu (Bản in)
             </button>
-            <button 
-                onClick={handleUpdate}
-                className="px-6 py-2 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-bold shadow-sm transition-all flex items-center gap-2"
-            >
-                <span className="material-symbols-outlined text-[18px]">save</span>
-                Cập nhật
-            </button>
+            
+            <div className="flex gap-3">
+                <button 
+                    onClick={onClose}
+                    className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                    Đóng
+                </button>
+                <button 
+                    onClick={handleUpdate}
+                    className="px-6 py-2 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-bold shadow-sm transition-all flex items-center gap-2"
+                >
+                    <span className="material-symbols-outlined text-[18px]">save</span>
+                    Cập nhật
+                </button>
+            </div>
         </div>
       </div>
     </div>
+
+    {/* Print Modal Overlay */}
+    {isPrintOpen && (
+        <InvoicePrintModal 
+            invoice={{...liveInvoice, studentName: invoice.studentName, className: invoice.studentCode ? 'Lớp chưa xếp' : 'Lớp A1'}} 
+            onClose={() => setIsPrintOpen(false)} 
+        />
+    )}
+    </>
   );
 };
 

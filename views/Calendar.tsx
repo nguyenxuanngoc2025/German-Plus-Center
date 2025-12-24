@@ -22,7 +22,7 @@ interface CalendarEvent {
 }
 
 const Calendar: React.FC = () => {
-  const { classes, currentUser, enrollStudent, convertLeadToStudent } = useData();
+  const { classes, currentUser, enrollStudent, convertLeadToStudent, students, moveClassSession } = useData();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month');
   
@@ -44,11 +44,25 @@ const Calendar: React.FC = () => {
     const rangeStart = new Date(today.getFullYear(), today.getMonth() - 2, 1);
     const rangeEnd = new Date(today.getFullYear(), today.getMonth() + 3, 0);
 
-    // 1. Generate Raw Events
+    // Identify current user context
+    const isStudent = currentUser?.role === 'student';
+    const isTeacher = currentUser?.role === 'teacher';
+    
+    // For Simulation/Demo: If student, pick the first student in DB as "Me" to find class
+    // In real app, currentUser.id would map to student.id
+    const myClassId = isStudent ? students[0]?.classId : null;
+
     classes.forEach(cls => {
-        // Filters
-        if (isMySchedule && currentUser && cls.teacher !== currentUser.name) return;
-        if (!isMySchedule && teacherFilter && cls.teacher !== teacherFilter) return;
+        // --- ROLE BASED FILTERING ---
+        if (isStudent && cls.id !== myClassId) return; // Student only sees their class
+        if (isTeacher && cls.teacher !== currentUser?.name) return; // Teacher only sees their classes (Auto "My Schedule")
+
+        // --- UI FILTERING ---
+        if (!isStudent && !isTeacher) {
+             if (isMySchedule && currentUser && cls.teacher !== currentUser.name) return;
+             if (!isMySchedule && teacherFilter && cls.teacher !== teacherFilter) return;
+        }
+        
         if (levelFilter && !cls.name.includes(levelFilter)) return;
         if (roomFilter && (cls.mode === 'online' ? 'Online' : 'Offline').indexOf(roomFilter) === -1 && !cls.location?.includes(roomFilter)) return;
 
@@ -60,30 +74,42 @@ const Calendar: React.FC = () => {
         const [startHour, startMinute] = timePart ? timePart.split(':').map(Number) : [18, 0];
         const durationMinutes = 90;
 
-        let loopDate = new Date(rangeStart);
-        while (loopDate <= rangeEnd) {
-            if (targetDays.includes(loopDate.getDay())) {
+        // Determine Room Display
+        let roomDisplay = 'TBD';
+        if (cls.mode === 'online') roomDisplay = 'Online';
+        else if (cls.location) {
+            // Extract simplistic room name if possible, else generic
+            if (cls.location.includes('Phòng')) roomDisplay = 'P.' + cls.location.split('Phòng')[1].trim().split(' ')[0];
+            else roomDisplay = 'P.101'; // Mock default room for demo collision
+        }
+
+        // Determine Color
+        let color = 'blue';
+        if (cls.status === 'upcoming') color = 'emerald';
+        else if (cls.status === 'full') color = 'orange';
+
+        // 1. Generate Regular Recurring Sessions
+        const classStartDate = cls.startDate ? new Date(cls.startDate) : rangeStart;
+        const classEndDate = cls.endDate ? new Date(cls.endDate) : rangeEnd;
+        // Adjust loop bounds to respect class duration
+        const loopStart = new Date(Math.max(rangeStart.getTime(), classStartDate.getTime()));
+        const loopEnd = new Date(Math.min(rangeEnd.getTime(), classEndDate.getTime()));
+
+        let loopDate = new Date(loopStart);
+        loopDate.setHours(0,0,0,0); 
+
+        while (loopDate <= loopEnd) {
+            const dateStr = loopDate.toISOString().split('T')[0];
+            
+            // Check if day matches schedule AND is not an off day
+            if (targetDays.includes(loopDate.getDay()) && (!cls.offDays || !cls.offDays.includes(dateStr))) {
                 const start = new Date(loopDate);
                 start.setHours(startHour, startMinute, 0);
                 const end = new Date(start);
                 end.setMinutes(start.getMinutes() + durationMinutes);
 
-                // Determine Room Display
-                let roomDisplay = 'TBD';
-                if (cls.mode === 'online') roomDisplay = 'Online';
-                else if (cls.location) {
-                    // Extract simplistic room name if possible, else generic
-                    if (cls.location.includes('Phòng')) roomDisplay = 'P.' + cls.location.split('Phòng')[1].trim().split(' ')[0];
-                    else roomDisplay = 'P.101'; // Mock default room for demo collision
-                }
-
-                // Determine Color
-                let color = 'blue';
-                if (cls.status === 'upcoming') color = 'emerald';
-                else if (cls.status === 'full') color = 'orange';
-
                 generatedEvents.push({
-                    id: `${cls.id}-${loopDate.toISOString().split('T')[0]}`,
+                    id: `${cls.id}-${dateStr}`,
                     classId: cls.id,
                     title: `${cls.name}`,
                     code: cls.code,
@@ -97,6 +123,31 @@ const Calendar: React.FC = () => {
                 });
             }
             loopDate.setDate(loopDate.getDate() + 1);
+        }
+
+        // 2. Generate Extra/Rescheduled Sessions
+        if (cls.extraSessions) {
+            cls.extraSessions.forEach((session, idx) => {
+                const sessionStart = new Date(session.date);
+                if (sessionStart >= rangeStart && sessionStart <= rangeEnd) {
+                    const sessionEnd = new Date(sessionStart);
+                    sessionEnd.setMinutes(sessionStart.getMinutes() + durationMinutes);
+
+                    generatedEvents.push({
+                        id: `${cls.id}-extra-${idx}`,
+                        classId: cls.id,
+                        title: `${cls.name} (Bù)`,
+                        code: cls.code,
+                        start: sessionStart,
+                        end: sessionEnd,
+                        teacher: cls.teacher,
+                        room: roomDisplay,
+                        level: cls.name.split(' ')[2] || 'A1',
+                        status: cls.status,
+                        color: 'purple', // Distinct color for rescheduled/extra
+                    });
+                }
+            });
         }
     });
 
@@ -123,7 +174,7 @@ const Calendar: React.FC = () => {
     }
 
     return generatedEvents;
-  }, [classes, teacherFilter, levelFilter, roomFilter, isMySchedule, currentUser]);
+  }, [classes, teacherFilter, levelFilter, roomFilter, isMySchedule, currentUser, students]);
 
   // --- NAVIGATION HANDLERS ---
   const handlePrev = () => {
@@ -245,7 +296,8 @@ const Calendar: React.FC = () => {
                                     {d.day}
                                 </span>
                                 <div className="flex items-center gap-1">
-                                    {/* Add Event Button (Visible on Hover) */}
+                                    {/* Add Event Button (Visible on Hover) - Hide for Student */}
+                                    {currentUser?.role !== 'student' && (
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); handleAddEvent(d.date); }}
                                         className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded text-slate-400 hover:text-primary"
@@ -253,6 +305,7 @@ const Calendar: React.FC = () => {
                                     >
                                         <span className="material-symbols-outlined text-[18px]">add_circle</span>
                                     </button>
+                                    )}
                                 </div>
                               </div>
                               
@@ -265,6 +318,8 @@ const Calendar: React.FC = () => {
                                       if (evt.hasConflict) {
                                           // Conflict: White background with Red Border
                                           bgClass = 'bg-white text-slate-700 border border-red-400 border-l-4 border-l-red-500 hover:bg-red-50 dark:bg-slate-800 dark:text-slate-200 dark:border-red-500'; 
+                                      } else if (evt.color === 'purple') {
+                                          bgClass = 'bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800'; 
                                       } else if (evt.status === 'upcoming') {
                                           // Upcoming: Pastel Green
                                           bgClass = 'bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800'; 
@@ -323,10 +378,12 @@ const Calendar: React.FC = () => {
                       <button onClick={handleNext} className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded"><span className="material-symbols-outlined">chevron_right</span></button>
                   </div>
                   <div className="flex items-center gap-2">
+                      {currentUser?.role !== 'student' && (
                       <button onClick={() => handleAddEvent(currentDate)} className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-bold shadow-sm hover:bg-primary-dark transition-colors flex items-center gap-1">
                           <span className="material-symbols-outlined text-[16px]">add</span>
                           Xếp lịch
                       </button>
+                      )}
                       <button onClick={() => setViewMode('month')} className="text-sm font-medium text-primary hover:underline">Quay lại tháng</button>
                   </div>
               </div>
@@ -362,6 +419,8 @@ const Calendar: React.FC = () => {
                           
                           if (evt.hasConflict) {
                               containerClass = 'bg-white border-2 border-red-400 text-slate-800 dark:bg-slate-800 dark:text-slate-200 dark:border-red-500';
+                          } else if (evt.color === 'purple') {
+                              containerClass = 'bg-purple-50 border-l-4 border-purple-500 text-purple-800 dark:bg-purple-900/20 dark:text-purple-200';
                           } else if (evt.status === 'upcoming') {
                               containerClass = 'bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200';
                           }
@@ -425,7 +484,8 @@ const Calendar: React.FC = () => {
                 </div>
             </div>
 
-            {/* Smart Filters */}
+            {/* Smart Filters - Hidden for Student */}
+            {currentUser?.role !== 'student' && (
             <div className="flex flex-wrap items-center gap-3">
                 {/* My Schedule Toggle */}
                 <button 
@@ -473,6 +533,7 @@ const Calendar: React.FC = () => {
                     </div>
                 </div>
             </div>
+            )}
         </div>
 
         {/* Main Content Area */}
@@ -487,8 +548,11 @@ const Calendar: React.FC = () => {
             event={selectedEvent} 
             onClose={() => setSelectedEvent(null)}
             onUpdate={(updatedDate) => {
-                alert(`Đã dời lịch sang: ${updatedDate.toLocaleDateString('vi-VN')}`);
-                setSelectedEvent(null);
+                const result = moveClassSession(selectedEvent.classId, selectedEvent.start.toISOString().split('T')[0], updatedDate.toISOString());
+                if(result?.success) {
+                    alert(result.message);
+                    setSelectedEvent(null);
+                }
             }}
             onAddStudent={() => handleAddStudentToClass(selectedEvent.classId)}
           />

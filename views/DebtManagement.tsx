@@ -1,14 +1,17 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
 import ColumnSelector, { ColumnOption } from '../components/ColumnSelector';
 import Avatar from '../components/Avatar';
 import DebtDetailModal from '../components/DebtDetailModal';
 import QuickPaymentModal from '../components/QuickPaymentModal';
+import { useLocation } from 'react-router-dom';
+import StatCard from '../components/StatCard';
 
 const DebtManagement: React.FC = () => {
   const { tuition, students, classes, recordPayment } = useData();
+  const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all, overdue, due_soon, in_term
   const [classFilter, setClassFilter] = useState('');
@@ -81,9 +84,61 @@ const DebtManagement: React.FC = () => {
       });
   }, [tuition, students, classes, searchTerm, statusFilter, classFilter]);
 
-  const totalDebt = debtList.reduce((acc, item) => acc + item.remainingAmount, 0);
-  const overdueCount = debtList.filter(i => i.debtStatus === 'Overdue').length;
-  const dueSoonCount = debtList.filter(i => i.debtStatus === 'Due Soon').length;
+  // --- EFFECT: DEEP LINKING ---
+  useEffect(() => {
+      // 1. Open Specific Debt
+      if (location.state && (location.state as any).openDebtId) {
+          const targetId = (location.state as any).openDebtId;
+          const target = tuition.find(t => t.id === targetId);
+          if (target) {
+              const student = students.find(s => s.id === target.studentId);
+              const cls = classes.find(c => c.id === student?.classId);
+              const today = new Date();
+              const dueDate = new Date(target.dueDate);
+              const diffTime = dueDate.getTime() - today.getTime();
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              let statusLabel = 'In Term';
+              if (diffDays < 0) statusLabel = 'Overdue';
+              else if (diffDays <= 3) statusLabel = 'Due Soon';
+
+              const enriched = {
+                  ...target,
+                  studentName: student?.name || 'Unknown',
+                  studentCode: student?.code || 'N/A',
+                  studentAvatar: student?.avatar || '?',
+                  className: cls?.name || 'N/A',
+                  debtStatus: statusLabel,
+                  diffDays
+              };
+              setSelectedDebt(enriched);
+              window.history.replaceState({}, document.title);
+          }
+      }
+  }, [location.state, tuition, students, classes]);
+
+  const totalDebt = debtList.reduce((acc, item) => acc + item.remainingAmount, 0); // Note: Current filtered list sum
+  
+  // Calculate Global Stats (Independent of filters)
+  const globalStats = useMemo(() => {
+      const today = new Date();
+      let allDebts = tuition
+        .filter(t => t.remainingAmount > 0)
+        .map(t => {
+            const dueDate = new Date(t.dueDate);
+            const diffTime = dueDate.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            let statusLabel = 'In Term';
+            if (diffDays < 0) statusLabel = 'Overdue';
+            else if (diffDays <= 3) statusLabel = 'Due Soon';
+            return { ...t, debtStatus: statusLabel };
+        });
+        
+      return {
+          total: allDebts.reduce((acc, i) => acc + i.remainingAmount, 0),
+          overdue: allDebts.filter(i => i.debtStatus === 'Overdue').length,
+          dueSoon: allDebts.filter(i => i.debtStatus === 'Due Soon').length
+      };
+  }, [tuition]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -127,6 +182,11 @@ const DebtManagement: React.FC = () => {
       );
   };
 
+  // Click Handlers for StatCards - Acts as Quick Filters
+  const handleStatClick = (filterType: string) => {
+      setStatusFilter(filterType);
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display">
       <Header title="Quản lý Công nợ" />
@@ -136,33 +196,33 @@ const DebtManagement: React.FC = () => {
             
             {/* Top Stats Bar */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Tổng Công nợ phải thu</p>
-                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{formatCurrency(totalDebt)}</h3>
-                    </div>
-                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
-                        <span className="material-symbols-outlined">account_balance_wallet</span>
-                    </div>
-                </div>
-                <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-xl border border-red-100 dark:border-red-800 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p className="text-red-600 dark:text-red-400 text-xs font-bold uppercase tracking-wider">Khoản nợ Quá hạn</p>
-                        <h3 className="text-2xl font-bold text-red-700 dark:text-red-300 mt-1">{overdueCount} <span className="text-sm font-medium opacity-80">hồ sơ</span></h3>
-                    </div>
-                    <div className="p-3 bg-white dark:bg-slate-800 text-red-600 rounded-lg">
-                        <span className="material-symbols-outlined">warning</span>
-                    </div>
-                </div>
-                <div className="bg-orange-50 dark:bg-orange-900/10 p-4 rounded-xl border border-orange-100 dark:border-orange-800 shadow-sm flex items-center justify-between">
-                    <div>
-                        <p className="text-orange-600 dark:text-orange-400 text-xs font-bold uppercase tracking-wider">Sắp đến hạn (3 ngày)</p>
-                        <h3 className="text-2xl font-bold text-orange-700 dark:text-orange-300 mt-1">{dueSoonCount} <span className="text-sm font-medium opacity-80">hồ sơ</span></h3>
-                    </div>
-                    <div className="p-3 bg-white dark:bg-slate-800 text-orange-600 rounded-lg">
-                        <span className="material-symbols-outlined">upcoming</span>
-                    </div>
-                </div>
+                <StatCard 
+                    label="Tổng Công nợ phải thu"
+                    value={formatCurrency(globalStats.total)}
+                    icon="account_balance_wallet"
+                    color="blue"
+                    tooltip="Click để xem tất cả các khoản nợ."
+                    onClick={() => handleStatClick('all')}
+                    className={statusFilter === 'all' ? 'ring-2 ring-primary border-primary' : ''}
+                />
+                <StatCard 
+                    label="Khoản nợ Quá hạn"
+                    value={`${globalStats.overdue} hồ sơ`}
+                    icon="warning"
+                    color="red"
+                    tooltip="Click để lọc danh sách nợ quá hạn."
+                    onClick={() => handleStatClick('overdue')}
+                    className={statusFilter === 'overdue' ? 'ring-2 ring-red-500 border-red-500' : ''}
+                />
+                <StatCard 
+                    label="Sắp đến hạn (3 ngày)"
+                    value={`${globalStats.dueSoon} hồ sơ`}
+                    icon="upcoming"
+                    color="orange"
+                    tooltip="Click để xem các khoản cần thu gấp."
+                    onClick={() => handleStatClick('due_soon')}
+                    className={statusFilter === 'due_soon' ? 'ring-2 ring-orange-500 border-orange-500' : ''}
+                />
             </div>
 
             {/* Filters Toolbar */}

@@ -31,7 +31,23 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
 
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month, day);
+        const dateStr = date.toISOString().split('T')[0];
+
+        // Check if date matches schedule AND is not an offDay
         if (targetDays.includes(date.getDay())) {
+            
+            // Handle Off Days (Cancelled Sessions) - Mark explicitly or Skip
+            if (classData.offDays && classData.offDays.includes(dateStr)) {
+                generatedEvents.push({
+                    date: date,
+                    day: day,
+                    title: 'ĐÃ HỦY',
+                    isCancelled: true,
+                    isPast: false // Treat as special state
+                });
+                continue;
+            }
+
             // Mock Logic: If date is in the past, randomly assign "Missing Attendance" status
             const isPast = date < today;
             const isMissingAttendance = isPast && (day % 3 === 0); // Mock condition
@@ -147,10 +163,10 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
                                 {day}
                             </span>
                             
-                            {/* Dot Indicator for Events - Updated to Orange (secondary) */}
+                            {/* Dot Indicator for Events */}
                             {evt && (
                                 <div className="mt-0.5 flex gap-0.5">
-                                    <span className={`size-1 rounded-full ${evt.isMissingAttendance ? 'bg-red-500 animate-pulse' : 'bg-secondary'}`}></span>
+                                    <span className={`size-1 rounded-full ${evt.isCancelled ? 'bg-gray-400' : evt.isMissingAttendance ? 'bg-red-500 animate-pulse' : 'bg-secondary'}`}></span>
                                 </div>
                             )}
                         </div>
@@ -162,26 +178,33 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
         {/* Selected Event Details (Panel) */}
         {selectedEvent ? (
             <div className="px-4 pb-4 animate-in slide-in-from-bottom-2 fade-in">
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                <div className={`p-3 rounded-lg border ${selectedEvent.isCancelled ? 'bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-700' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800'}`}>
                     <div className="flex justify-between items-start mb-2">
-                        <span className="text-xs font-bold text-blue-800 dark:text-blue-300 uppercase">
+                        <span className={`text-xs font-bold uppercase ${selectedEvent.isCancelled ? 'text-gray-500 line-through' : 'text-blue-800 dark:text-blue-300'}`}>
                             {selectedEvent.date.toLocaleDateString('vi-VN', {weekday: 'long', day: 'numeric', month: 'numeric'})}
                         </span>
                         {selectedEvent.isMissingAttendance && (
                             <span className="text-[10px] font-bold text-red-600 bg-white px-1.5 py-0.5 rounded border border-red-200">Chưa điểm danh</span>
                         )}
+                        {selectedEvent.isCancelled && (
+                            <span className="text-[10px] font-bold text-white bg-gray-500 px-1.5 py-0.5 rounded">ĐÃ HỦY</span>
+                        )}
                     </div>
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1">{selectedEvent.title}</h4>
+                    <h4 className={`text-sm font-bold mb-1 ${selectedEvent.isCancelled ? 'text-gray-500' : 'text-slate-900 dark:text-white'}`}>{selectedEvent.title}</h4>
+                    {!selectedEvent.isCancelled && (
                     <div className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
                         <p className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[14px]">schedule</span> {selectedEvent.time} - 20:00</p>
                         <p className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[14px]">person</span> {selectedEvent.teacher}</p>
                     </div>
+                    )}
+                    {!selectedEvent.isCancelled && (
                     <button 
                         onClick={() => onAttendanceClick && onAttendanceClick(selectedEvent.date.toISOString())}
                         className="mt-3 w-full py-1.5 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 text-xs font-bold rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
                     >
                         {selectedEvent.isPast ? 'Bổ sung điểm danh' : 'Điểm danh ngay'}
                     </button>
+                    )}
                 </div>
             </div>
         ) : (

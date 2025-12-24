@@ -1,7 +1,9 @@
+
 import React, { useState, useMemo } from 'react';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
 import { useNavigate } from 'react-router-dom';
+import { readMoney } from '../components/InvoicePrintModal'; // Import helper
 
 interface ServiceItem {
   id: number;
@@ -12,23 +14,22 @@ interface ServiceItem {
 
 const CreateInvoice: React.FC = () => {
   const navigate = useNavigate();
-  const { addFinanceRecord } = useData();
+  const { addFinanceRecord, settings, currentUser } = useData();
 
   // Form State
   const [studentName, setStudentName] = useState('Nguyễn Thành Nam');
   const [courseName, setCourseName] = useState('A1 Intensiv - K24 (Đang học)');
-  const [issueDate, setIssueDate] = useState('2023-10-25');
-  const [dueDate, setDueDate] = useState('2023-10-28');
+  const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Items State
   const [items, setItems] = useState<ServiceItem[]>([
-    { id: 1, name: 'Khóa học Tiếng Đức A1', quantity: 1, price: 5000000 },
+    { id: 1, name: 'Học phí khóa A1 Intensiv', quantity: 1, price: 5000000 },
     { id: 2, name: 'Giáo trình Studio 21 - A1', quantity: 1, price: 250000 }
   ]);
 
   // Discount State
   const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
-  const [discountValue, setDiscountValue] = useState<number>(10);
+  const [discountValue, setDiscountValue] = useState<number>(0);
 
   // Calculations
   const subtotal = useMemo(() => {
@@ -70,16 +71,17 @@ const CreateInvoice: React.FC = () => {
 
   const handleSave = () => {
       // Create a unified description from items
-      const description = items.map(i => `${i.name} (x${i.quantity})`).join(', ');
+      const description = items.map(i => `${i.name}`).join(', ');
 
       addFinanceRecord({
           type: 'income',
           amount: total,
           category: 'Tuition',
           description: description + ` - ${studentName}`,
+          date: issueDate
       });
 
-      alert('Đã lưu và gửi hóa đơn thành công!');
+      alert('Đã lưu và xuất phiếu thu thành công!');
       navigate('/finance/invoices');
   };
 
@@ -88,16 +90,16 @@ const CreateInvoice: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark">
-      <Header title="Tạo Hóa đơn" />
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display">
+      <Header title="Tạo Phiếu thu" />
       
       <main className="flex-1 overflow-y-auto p-4 lg:p-6 scroll-smooth">
         <div className="max-w-[1600px] mx-auto h-full flex flex-col">
           {/* Page Title & Main Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Tạo Hóa đơn Mới</h1>
-              <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Nhập thông tin chi tiết để tạo hóa đơn cho học viên.</p>
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Tạo Phiếu thu Mới</h1>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Lập phiếu thu học phí và các khoản dịch vụ khác.</p>
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => navigate('/finance/invoices')} className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2">
@@ -105,8 +107,8 @@ const CreateInvoice: React.FC = () => {
                 <span>Hủy</span>
               </button>
               <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-semibold shadow-lg shadow-primary/20 transition-all flex items-center gap-2">
-                <span className="material-symbols-outlined text-[20px]">send</span>
-                <span>Lưu & Gửi</span>
+                <span className="material-symbols-outlined text-[20px]">print</span>
+                <span>Lưu & Xuất phiếu</span>
               </button>
             </div>
           </div>
@@ -120,13 +122,13 @@ const CreateInvoice: React.FC = () => {
               {/* General Info Card */}
               <div className="bg-white dark:bg-[#1a202c] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5">
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-[22px]">info</span>
-                  Thông tin chung
+                  <span className="material-symbols-outlined text-primary text-[22px]">person</span>
+                  Thông tin người nộp
                 </h2>
                 <div className="grid grid-cols-1 gap-4">
                   {/* Student Select */}
                   <label className="block">
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Học viên <span className="text-red-500">*</span></span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Học viên / Người nộp <span className="text-red-500">*</span></span>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <span className="material-symbols-outlined text-slate-400 text-[20px]">person_search</span>
@@ -138,45 +140,28 @@ const CreateInvoice: React.FC = () => {
                         value={studentName}
                         onChange={(e) => setStudentName(e.target.value)}
                       />
-                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer">
-                        <span className="material-symbols-outlined text-slate-400 hover:text-slate-600 text-[20px]">expand_more</span>
-                      </div>
                     </div>
                   </label>
                   {/* Class Select */}
                   <label className="block">
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Lớp học</span>
-                    <select 
-                        className="block w-full py-2.5 rounded-lg border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm cursor-pointer"
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Lớp / Nội dung</span>
+                    <input 
+                        className="block w-full py-2.5 px-3 rounded-lg border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm"
                         value={courseName}
                         onChange={(e) => setCourseName(e.target.value)}
-                    >
-                      <option>A1 Intensiv - K24 (Đang học)</option>
-                      <option>A2 Standard - K25</option>
-                      <option>Luyện thi B1</option>
-                    </select>
+                        placeholder="Nhập địa chỉ hoặc lớp..."
+                    />
                   </label>
-                  {/* Dates */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <label className="block">
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Ngày phát hành</span>
-                      <input 
-                        className="block w-full py-2.5 rounded-lg border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm" 
-                        type="date" 
-                        value={issueDate}
-                        onChange={(e) => setIssueDate(e.target.value)}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Ngày đáo hạn</span>
-                      <input 
-                        className="block w-full py-2.5 rounded-lg border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm" 
-                        type="date" 
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                      />
-                    </label>
-                  </div>
+                  {/* Date */}
+                  <label className="block">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Ngày lập phiếu</span>
+                    <input 
+                      className="block w-full py-2.5 rounded-lg border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm" 
+                      type="date" 
+                      value={issueDate}
+                      onChange={(e) => setIssueDate(e.target.value)}
+                    />
+                  </label>
                 </div>
               </div>
 
@@ -184,8 +169,8 @@ const CreateInvoice: React.FC = () => {
               <div className="bg-white dark:bg-[#1a202c] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 flex-1">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary text-[22px]">shopping_cart</span>
-                    Chi tiết dịch vụ
+                    <span className="material-symbols-outlined text-primary text-[22px]">payments</span>
+                    Khoản thu chi tiết
                   </h2>
                   <button onClick={handleAddItem} className="text-sm text-primary font-medium hover:underline flex items-center gap-1">
                     <span className="material-symbols-outlined text-[18px]">add_circle</span>
@@ -205,30 +190,20 @@ const CreateInvoice: React.FC = () => {
                         <span className="material-symbols-outlined text-[16px] block">close</span>
                       </button>
                       <div className="grid grid-cols-12 gap-3">
-                        <div className="col-span-12 sm:col-span-6">
-                          <label className="text-xs text-slate-500 mb-1 block">Tên dịch vụ</label>
+                        <div className="col-span-12 sm:col-span-7">
+                          <label className="text-xs text-slate-500 mb-1 block">Lý do thu</label>
                           <input 
                             className="w-full text-sm border-0 border-b border-slate-200 dark:border-slate-600 bg-transparent focus:ring-0 focus:border-primary px-0 py-1 font-medium text-slate-900 dark:text-white placeholder:text-slate-400" 
                             type="text" 
                             value={item.name}
                             onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
-                            placeholder="Nhập tên dịch vụ"
+                            placeholder="Nhập nội dung thu"
                           />
                         </div>
-                        <div className="col-span-3 sm:col-span-2">
-                          <label className="text-xs text-slate-500 mb-1 block">SL</label>
+                        <div className="col-span-12 sm:col-span-5">
+                          <label className="text-xs text-slate-500 mb-1 block text-right">Thành tiền (VNĐ)</label>
                           <input 
-                            className="w-full text-sm border-0 border-b border-slate-200 dark:border-slate-600 bg-transparent focus:ring-0 focus:border-primary px-0 py-1 text-right text-slate-900 dark:text-white" 
-                            type="number" 
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => handleItemChange(item.id, 'quantity', parseInt(e.target.value) || 0)}
-                          />
-                        </div>
-                        <div className="col-span-5 sm:col-span-4">
-                          <label className="text-xs text-slate-500 mb-1 block">Đơn giá (VNĐ)</label>
-                          <input 
-                            className="w-full text-sm border-0 border-b border-slate-200 dark:border-slate-600 bg-transparent focus:ring-0 focus:border-primary px-0 py-1 text-right text-slate-900 dark:text-white" 
+                            className="w-full text-sm border-0 border-b border-slate-200 dark:border-slate-600 bg-transparent focus:ring-0 focus:border-primary px-0 py-1 text-right text-slate-900 dark:text-white font-bold" 
                             type="text" 
                             value={item.price}
                             onChange={(e) => handleItemChange(item.id, 'price', parseInt(e.target.value.replace(/\D/g, '')) || 0)}
@@ -242,12 +217,12 @@ const CreateInvoice: React.FC = () => {
                 {/* Summary Inputs */}
                 <div className="mt-6 border-t border-slate-100 dark:border-slate-700 pt-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Tạm tính</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">Tổng giá trị</span>
                     <span className="text-sm font-medium text-slate-900 dark:text-white">{formatCurrency(subtotal)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-600 dark:text-slate-400">Giảm giá</span>
+                      <span className="text-sm text-slate-600 dark:text-slate-400">Giảm giá / Học bổng</span>
                       <div className="flex bg-slate-100 dark:bg-slate-800 rounded-md p-0.5">
                         <button 
                             onClick={() => setDiscountType('percent')}
@@ -274,133 +249,111 @@ const CreateInvoice: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-2">
-                    <span className="text-base font-bold text-slate-900 dark:text-white">Tổng cộng</span>
+                    <span className="text-base font-bold text-slate-900 dark:text-white">Thực thu</span>
                     <span className="text-xl font-bold text-primary">{formatCurrency(total)}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* RIGHT COLUMN: Real-time Preview */}
+            {/* RIGHT COLUMN: Real-time Preview (Standard Receipt Template) */}
             <div className="xl:col-span-7 flex flex-col">
               {/* Toolbar */}
               <div className="flex items-center justify-between mb-4 px-2">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Xem trước hóa đơn</h3>
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Xem trước Phiếu thu</h3>
                 <div className="flex items-center gap-2">
-                  <button className="p-2 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm rounded transition-all" title="Print">
-                    <span className="material-symbols-outlined text-[20px]">print</span>
-                  </button>
-                  <button className="p-2 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm rounded transition-all" title="Download PDF">
-                    <span className="material-symbols-outlined text-[20px]">download</span>
-                  </button>
-                  <button className="p-2 text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm rounded transition-all" title="Full Screen">
-                    <span className="material-symbols-outlined text-[20px]">fullscreen</span>
-                  </button>
+                  <div className="text-xs text-slate-400 italic mr-2">Khổ giấy A5 (Ngang)</div>
                 </div>
               </div>
 
-              {/* Paper */}
+              {/* Paper Preview - Mimicking InvoicePrintModal */}
               <div className="flex-1 bg-slate-200/50 dark:bg-slate-900/50 rounded-xl overflow-y-auto p-4 md:p-8 flex justify-center items-start shadow-inner border border-slate-200 dark:border-slate-800">
-                {/* Invoice A4 Container */}
-                <div className="w-full max-w-[210mm] min-h-[297mm] bg-white text-slate-900 shadow-2xl p-8 md:p-12 relative flex flex-col transition-all duration-300">
-                  {/* Header */}
-                  <div className="flex justify-between items-start mb-12">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-primary/10 rounded-lg p-2">
-                        {/* Logo Placeholder */}
-                        <div className="bg-center bg-no-repeat bg-cover rounded size-10" style={{backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuDhSd0qPTYnfe9JAtdgl2z9UVHerJd-mcD68e1QOblcnVTs6HBSQagj5X9xdUaHhMCSXEyekMITffuexKwApVMdBcsQu1jejc-_zilgCK8c_NlKBKZv8iy_zCI9_C_YrZ_lTy_KwhchQsGD9V5MMwyJAoDrcF9Vr2JtjBbyklMdRNKmAFwm0B_MSf-YlVCwhTJXDtolXzo8cP5dWeC_tiGv2ZPMINP9HnPp0NdyIM3DADGeOts8Li5J-N-CGgRb6P_-wemEVo7sMaC4")'}}></div>
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-bold text-primary uppercase tracking-wide">German Plus</h2>
-                        <p className="text-xs text-slate-500">Trung tâm Đào tạo Tiếng Đức</p>
-                      </div>
+                
+                {/* Standard Receipt Template Container */}
+                <div className="w-full max-w-[210mm] bg-white text-slate-900 shadow-2xl p-8 md:p-10 relative flex flex-col transition-all duration-300 font-serif">
+                    
+                    {/* Header */}
+                    <div className="flex justify-between items-start mb-6 border-b-2 border-slate-900 pb-4">
+                        <div className="flex gap-4 items-center">
+                            <div className="size-12 flex items-center justify-center">
+                                {settings.logo && settings.logo.startsWith('http') ? (
+                                    <img src={settings.logo} className="w-full h-full object-contain grayscale brightness-50 contrast-125" alt="Logo" />
+                                ) : (
+                                    <span className="material-symbols-outlined text-3xl text-slate-800">school</span>
+                                )}
+                            </div>
+                            <div className="flex flex-col">
+                                <h1 className="text-lg font-bold uppercase tracking-wider text-slate-900">{settings.systemName}</h1>
+                                <p className="text-xs italic text-slate-600">{settings.footerInfo.split('|')[0] || 'Hà Nội'}</p>
+                                <p className="text-xs font-bold text-slate-800">Hotline: {settings.footerInfo.split('Hotline: ')[1] || '1900 1234'}</p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <h2 className="text-2xl font-extrabold uppercase tracking-[0.1em] text-slate-900 mb-1">Phiếu Thu</h2>
+                            <div className="flex flex-col items-end text-xs text-slate-600">
+                                <p>Mẫu số: 01-TT</p>
+                                <p>Ký hiệu: GP/24</p>
+                                <p>Số: <span className="font-mono font-bold text-slate-900 text-sm">AUTO-GEN</span></p>
+                            </div>
+                        </div>
                     </div>
-                    <div className="text-right">
-                      <h1 className="text-3xl font-light text-slate-300 tracking-[0.2em] uppercase">Hóa đơn</h1>
-                      <p className="text-sm font-medium text-slate-600 mt-1">#INV-DRAFT</p>
-                    </div>
-                  </div>
 
-                  {/* Info Grid */}
-                  <div className="grid grid-cols-2 gap-12 mb-12">
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Nhà cung cấp</h3>
-                      <p className="font-bold text-slate-800">CÔNG TY TNHH GERMAN PLUS</p>
-                      <div className="text-sm text-slate-500 mt-2 space-y-1">
-                        <p>123 Đường Nguyễn Trãi, Thanh Xuân</p>
-                        <p>Hà Nội, Việt Nam</p>
-                        <p>contact@germanplus.vn</p>
-                        <p>+84 987 654 321</p>
-                      </div>
+                    {/* Body Info */}
+                    <div className="mb-6 space-y-3 text-sm leading-relaxed">
+                        <div className="flex items-baseline">
+                            <span className="w-40 font-bold shrink-0">Họ và tên người nộp:</span>
+                            <span className="flex-1 border-b border-slate-400 border-dashed px-2 font-medium">{studentName}</span>
+                        </div>
+                        <div className="flex items-baseline">
+                            <span className="w-40 font-bold shrink-0">Địa chỉ / Lớp học:</span>
+                            <span className="flex-1 border-b border-slate-400 border-dashed px-2">{courseName}</span>
+                        </div>
+                        <div className="flex items-baseline">
+                            <span className="w-40 font-bold shrink-0">Lý do nộp:</span>
+                            <span className="flex-1 border-b border-slate-400 border-dashed px-2">
+                                {items.map(i => i.name).join(', ')}
+                            </span>
+                        </div>
+                        <div className="flex items-baseline">
+                            <span className="w-40 font-bold shrink-0">Số tiền:</span>
+                            <span className="flex-1 font-bold text-lg px-2">{formatCurrency(total)} VND</span>
+                        </div>
+                        <div className="flex items-baseline">
+                            <span className="w-40 font-bold shrink-0">Viết bằng chữ:</span>
+                            <span className="flex-1 italic border-b border-slate-400 border-dashed px-2">{readMoney(total)}</span>
+                        </div>
                     </div>
-                    <div className="text-right">
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Khách hàng</h3>
-                      <p className="font-bold text-slate-800 text-lg">{studentName || '...'}</p>
-                      <div className="text-sm text-slate-500 mt-2 space-y-1">
-                        <p>Lớp: <span className="text-slate-800 font-medium">{courseName}</span></p>
-                        <p>Mã HV: <span className="text-slate-800 font-medium">HV2023055</span></p>
-                        <p className="mt-2 text-secondary">Hạn thanh toán: {new Date(dueDate).toLocaleDateString('vi-VN')}</p>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Table */}
-                  <div className="mb-10 min-h-[200px]">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b-2 border-slate-100">
-                          <th className="py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-1/2">Mô tả dịch vụ</th>
-                          <th className="py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">SL</th>
-                          <th className="py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Đơn giá</th>
-                          <th className="py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Thành tiền</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-sm text-slate-600">
-                        {items.map((item) => (
-                            <tr key={item.id} className="border-b border-slate-50">
-                                <td className="py-4 font-medium text-slate-800">{item.name || '...'}</td>
-                                <td className="py-4 text-center">{item.quantity}</td>
-                                <td className="py-4 text-right">{formatCurrency(item.price)}</td>
-                                <td className="py-4 text-right font-medium text-slate-800">{formatCurrency(item.price * item.quantity)}</td>
-                            </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Totals */}
-                  <div className="flex justify-end mb-16">
-                    <div className="w-1/2 md:w-1/3">
-                      <div className="flex justify-between py-2 text-sm text-slate-600">
-                        <span>Tạm tính</span>
-                        <span className="font-medium">{formatCurrency(subtotal)}</span>
-                      </div>
-                      <div className="flex justify-between py-2 text-sm text-green-600">
-                        <span>Giảm giá {discountType === 'percent' ? `(${discountValue}%)` : ''}</span>
-                        <span>- {formatCurrency(discountAmount)}</span>
-                      </div>
-                      <div className="border-t-2 border-slate-100 mt-2 pt-2 flex justify-between items-center">
-                        <span className="text-sm font-bold text-slate-800">Tổng cộng</span>
-                        <span className="text-2xl font-bold text-primary">{formatCurrency(total)}</span>
-                      </div>
+                    {/* Footer Date & Signatures */}
+                    <div className="flex justify-end mb-8">
+                        <p className="italic text-slate-600 text-sm">Hà Nội, ngày {new Date(issueDate).getDate()} tháng {new Date(issueDate).getMonth() + 1} năm {new Date(issueDate).getFullYear()}</p>
                     </div>
-                  </div>
 
-                  {/* Footer / Payment */}
-                  <div className="mt-auto bg-slate-50 rounded-lg p-6 flex flex-col md:flex-row gap-6 items-center">
-                    <div className="flex-1">
-                      <h4 className="text-sm font-bold text-slate-800 mb-2">Thông tin thanh toán</h4>
-                      <p className="text-sm text-slate-500 mb-1">Ngân hàng: <span className="font-medium text-slate-700">Vietcombank</span></p>
-                      <p className="text-sm text-slate-500 mb-1">Số tài khoản: <span className="font-medium text-slate-700">1234 5678 9999</span></p>
-                      <p className="text-sm text-slate-500">Chủ tài khoản: <span className="font-medium text-slate-700">GERMAN PLUS LTD</span></p>
-                      <p className="text-sm text-slate-500 mt-2 italic">Nội dung CK: [Mã HV] - [Tên HV]</p>
+                    <div className="grid grid-cols-2 gap-10 text-center">
+                        <div>
+                            <p className="font-bold uppercase text-xs">Người nộp tiền</p>
+                            <p className="text-[10px] italic text-slate-500">(Ký, họ tên)</p>
+                            <div className="h-16"></div>
+                            <p className="font-bold text-slate-800 text-sm">{studentName}</p>
+                        </div>
+                        <div>
+                            <p className="font-bold uppercase text-xs">Người thu tiền</p>
+                            <p className="text-[10px] italic text-slate-500">(Ký, họ tên)</p>
+                            <div className="h-16 flex items-center justify-center">
+                                {/* Stamp Placeholder */}
+                                <div className="size-16 border-2 border-red-500/30 rounded-full flex items-center justify-center -rotate-12">
+                                    <span className="text-red-500/30 font-bold uppercase text-[10px] text-center leading-tight">Đã thu<br/>tiền</span>
+                                </div>
+                            </div>
+                            <p className="font-bold text-slate-800 text-sm">{currentUser?.name || 'Admin'}</p>
+                        </div>
                     </div>
-                    <div className="size-24 bg-white p-1 rounded border border-slate-200 flex-shrink-0" style={{backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCmoOsytBU46dVD0SEtUl_jfsOJUjEON625s52oMeVflOpu1GABUjcalk7HzDGo8DcNRMKvkFTyZxwwYttI-0MGwGdcRcM9h-oFHoBTiJnvW2MTqVpCUx_LW0Z8WMmwDTqUPVxZHitBIpJjefT6nrXEknQBo5cugygmoJUtQl2ijRI0hGiCH0xfMCsZ9o7CQBHJz2BWLHLGcBCibF3xtmTazljlaiFCIBKF0KqmeYehc_36PTmuYgLcX3fKHYYZfqIm9ywJvGYODP0q")'}}></div>
-                  </div>
-                  <div className="text-center mt-8 text-xs text-slate-400">
-                    Cảm ơn bạn đã tin tưởng German Plus!
-                  </div>
+
+                    <div className="text-center text-[9px] italic text-slate-400 mt-8 border-t border-slate-100 pt-2">
+                        (Cần kiểm tra, đối chiếu khi lập, giao, nhận phiếu. Chứng từ này có giá trị lưu hành nội bộ)
+                    </div>
                 </div>
+
               </div>
             </div>
           </div>

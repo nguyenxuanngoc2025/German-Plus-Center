@@ -5,20 +5,22 @@ import Header from '../components/Header';
 import { useData } from '../context/DataContext';
 import { ClassItem } from '../types';
 import Avatar from '../components/Avatar';
+import AdvancedFilterBar, { FilterState } from '../components/AdvancedFilterBar';
+import ColumnSelector, { ColumnOption } from '../components/ColumnSelector';
 
 const ClassList: React.FC = () => {
   const navigate = useNavigate();
   const { classes, hasPermission } = useData(); // Use Global Data
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchTerm, setSearchTerm] = useState('');
-  const [levelFilter, setLevelFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [teacherFilter, setTeacherFilter] = useState('');
-  const [modeFilter, setModeFilter] = useState(''); // New filter for Online/Offline
-  const [sortConfig, setSortConfig] = useState<{ key: keyof ClassItem; direction: 'asc' | 'desc' } | null>(null);
+  
+  // --- FILTER STATE ---
+  const [filters, setFilters] = useState<FilterState>({
+      startDate: '', endDate: '', compareDateStart: '', compareDateEnd: '', isCompare: false,
+      source: 'all', classType: 'all', classId: 'all', status: 'all'
+  });
 
-  // Extract unique teachers for filter
-  const teachers = Array.from(new Set(classes.map(c => c.teacher)));
+  const [sortConfig, setSortConfig] = useState<{ key: keyof ClassItem; direction: 'asc' | 'desc' } | null>(null);
 
   const filteredClasses = useMemo(() => {
     let data = classes.filter(cls => {
@@ -26,12 +28,11 @@ const ClassList: React.FC = () => {
       const matchSearch = cls.name.toLowerCase().includes(term) || 
                           cls.code.toLowerCase().includes(term) ||
                           cls.teacher.toLowerCase().includes(term);
-      const matchLevel = levelFilter ? cls.name.includes(levelFilter) : true;
-      const matchStatus = statusFilter ? cls.status === statusFilter : true;
-      const matchTeacher = teacherFilter ? cls.teacher === teacherFilter : true;
-      const matchMode = modeFilter ? cls.mode === modeFilter : true; // Mode Filter Logic
       
-      return matchSearch && matchLevel && matchStatus && matchTeacher && matchMode;
+      const matchStatus = filters.status === 'all' || cls.status === filters.status;
+      const matchMode = filters.classType === 'all' || cls.mode === filters.classType;
+      
+      return matchSearch && matchStatus && matchMode;
     });
 
     if (sortConfig !== null) {
@@ -39,17 +40,15 @@ const ClassList: React.FC = () => {
         const aValue = a[sortConfig.key];
         const bValue = b[sortConfig.key];
         
-        if (aValue < bValue) {
-          return sortConfig.direction === 'asc' ? -1 : 1;
-        }
-        if (aValue > bValue) {
-          return sortConfig.direction === 'asc' ? 1 : -1;
+        if (aValue && bValue) {
+            if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
         }
         return 0;
       });
     }
     return data;
-  }, [classes, searchTerm, levelFilter, statusFilter, teacherFilter, modeFilter, sortConfig]);
+  }, [classes, searchTerm, filters, sortConfig]);
 
   const handleSort = (key: keyof ClassItem) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -122,11 +121,35 @@ const ClassList: React.FC = () => {
     );
   };
 
+  // Helper to check if class is ending soon (approx < 5 sessions left ~ 14 days)
+  const isEndingSoon = (endDateStr?: string) => {
+      if (!endDateStr) return false;
+      const end = new Date(endDateStr);
+      const today = new Date();
+      const diffTime = end.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      // Assuming average 3 sessions/week, 5 sessions is ~1.5 weeks (10-14 days)
+      return diffDays > 0 && diffDays <= 14;
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark">
       <Header title="Trung tâm Lớp học" />
+      
+      <AdvancedFilterBar 
+        onFilterChange={setFilters}
+        showDate={false}
+        showClassType={true}
+        showStatus={true}
+        statusOptions={[
+            { label: 'Đang hoạt động', value: 'active' },
+            { label: 'Sắp khai giảng', value: 'upcoming' },
+            { label: 'Đã đầy', value: 'full' }
+        ]}
+      />
+
       <div className="flex-1 overflow-y-auto p-4 md:p-8">
-        <div className="mx-auto max-w-[1400px] flex flex-col gap-6">
+        <div className="mx-auto max-w-[1600px] flex flex-col gap-6">
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
                 <div className="flex flex-col gap-1">
                     <h2 className="text-slate-800 dark:text-white text-3xl font-bold tracking-tight">Danh sách Lớp học</h2>
@@ -164,37 +187,6 @@ const ClassList: React.FC = () => {
                         />
                         <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[#616f89] text-[18px]">search</span>
                     </div>
-                    
-                    <div className="flex gap-3 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-                         <div className="h-6 w-px bg-gray-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
-                        <select 
-                            className="h-9 rounded-md bg-[#f0f2f4] dark:bg-slate-800 pl-3 pr-8 text-sm font-medium text-[#111318] dark:text-white border-none focus:ring-1 focus:ring-primary hover:bg-[#e0e2e4] dark:hover:bg-slate-700 cursor-pointer min-w-[140px]"
-                            value={modeFilter}
-                            onChange={(e) => setModeFilter(e.target.value)}
-                        >
-                            <option value="">Tất cả hình thức</option>
-                            <option value="online">Online</option>
-                            <option value="offline">Offline</option>
-                        </select>
-                        <select 
-                            className="h-9 rounded-md bg-[#f0f2f4] dark:bg-slate-800 pl-3 pr-8 text-sm font-medium text-[#111318] dark:text-white border-none focus:ring-1 focus:ring-primary hover:bg-[#e0e2e4] dark:hover:bg-slate-700 cursor-pointer min-w-[140px]"
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                        >
-                            <option value="">Trạng thái: Tất cả</option>
-                            <option value="active">Đang học</option>
-                            <option value="upcoming">Sắp khai giảng</option>
-                            <option value="full">Đầy lớp</option>
-                        </select>
-                        <select 
-                            className="h-9 rounded-md bg-[#f0f2f4] dark:bg-slate-800 pl-3 pr-8 text-sm font-medium text-[#111318] dark:text-white border-none focus:ring-1 focus:ring-primary hover:bg-[#e0e2e4] dark:hover:bg-slate-700 cursor-pointer min-w-[140px]"
-                            value={teacherFilter}
-                            onChange={(e) => setTeacherFilter(e.target.value)}
-                        >
-                            <option value="">Tất cả giáo viên</option>
-                            {teachers.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                    </div>
                 </div>
                 <div className="flex items-center gap-1 border-l border-gray-200 dark:border-slate-700 pl-4 ml-auto lg:ml-0">
                     <button 
@@ -221,38 +213,44 @@ const ClassList: React.FC = () => {
                         <table className="w-full text-left text-sm text-[#111318] dark:text-white whitespace-nowrap">
                             <thead className="bg-[#F1F5F9] dark:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold border-b border-[#e5e7eb] dark:border-slate-700 uppercase tracking-wide text-xs">
                                 <tr>
-                                    <th onClick={() => handleSort('name')} className="px-6 py-4 w-64 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('name')} className="px-6 py-3 w-64 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Tên lớp học {renderSortIcon('name')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('mode')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('startDate')} className="px-6 py-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
+                                        <div className="flex items-center gap-1">Ngày khai giảng {renderSortIcon('startDate')}</div>
+                                    </th>
+                                    <th onClick={() => handleSort('endDate')} className="px-6 py-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
+                                        <div className="flex items-center gap-1">Dự kiến kết thúc {renderSortIcon('endDate')}</div>
+                                    </th>
+                                    <th onClick={() => handleSort('mode')} className="px-6 py-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Hình thức {renderSortIcon('mode')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('tuitionFee')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
-                                        <div className="flex items-center gap-1">Học phí {renderSortIcon('tuitionFee')}</div>
-                                    </th>
-                                    <th onClick={() => handleSort('teacher')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('teacher')} className="px-6 py-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Giáo viên {renderSortIcon('teacher')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('schedule')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('schedule')} className="px-6 py-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Lịch học {renderSortIcon('schedule')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('students')} className="px-6 py-4 w-48 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('students')} className="px-6 py-3 w-48 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Sĩ số {renderSortIcon('students')}</div>
                                     </th>
-                                    <th onClick={() => handleSort('status')} className="px-6 py-4 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
+                                    <th onClick={() => handleSort('status')} className="px-6 py-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors group select-none">
                                         <div className="flex items-center gap-1">Trạng thái {renderSortIcon('status')}</div>
                                     </th>
-                                    <th className="px-6 py-4 text-right">Thao tác</th>
+                                    <th className="px-6 py-3 text-right">Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[#e5e7eb] dark:divide-slate-700">
-                                {filteredClasses.map((cls) => (
+                                {filteredClasses.map((cls) => {
+                                    const endingSoon = isEndingSoon(cls.endDate);
+                                    
+                                    return (
                                     <tr 
                                         key={cls.id} 
                                         onClick={() => navigate(`/classes/${cls.id}`)}
                                         className="hover:bg-blue-50/50 dark:hover:bg-slate-800 even:bg-[#F8FAFC] dark:even:bg-slate-800/50 transition-colors group cursor-pointer"
                                     >
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-3">
                                             <div className="flex flex-col">
                                                 <span className="font-semibold text-slate-800 dark:text-white text-base group-hover:text-primary transition-colors">{cls.name} - {cls.code}</span>
                                                 <div className="flex items-center gap-2 mt-1">
@@ -260,13 +258,25 @@ const ClassList: React.FC = () => {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-3">
+                                            <span className="text-slate-700 dark:text-slate-300">
+                                                {cls.startDate ? new Date(cls.startDate).toLocaleDateString('vi-VN') : '-'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`font-medium ${endingSoon ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                    {cls.endDate ? new Date(cls.endDate).toLocaleDateString('vi-VN') : '-'}
+                                                </span>
+                                                {endingSoon && (
+                                                    <span className="material-symbols-outlined text-[16px] text-orange-500 animate-pulse" title="Sắp kết thúc (< 5 buổi)">warning</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-3">
                                             {getModeBadge(cls)}
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-slate-900 dark:text-white font-medium">{formatCurrency(cls.tuitionFee)}</span>
-                                        </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-3">
                                             <div className="flex items-center gap-3">
                                                 <Avatar src={cls.teacherAvatar} name={cls.teacher} className="size-9 border border-slate-200 dark:border-slate-600" />
                                                 <div className="flex flex-col">
@@ -275,7 +285,7 @@ const ClassList: React.FC = () => {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-[#616f89] dark:text-slate-400">
+                                        <td className="px-6 py-3 text-[#616f89] dark:text-slate-400">
                                             <div className="flex flex-col gap-1">
                                                 <span className="font-medium text-[#111318] dark:text-white">{cls.schedule.split('•')[0]}</span>
                                                 <div className="flex items-center gap-1 text-xs">
@@ -284,7 +294,7 @@ const ClassList: React.FC = () => {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-3">
                                             <div className="flex flex-col gap-1.5 w-full max-w-[120px]">
                                                 <div className="flex justify-between text-xs font-medium">
                                                     <span className="text-[#111318] dark:text-white">{cls.students}<span className="text-[#616f89] dark:text-slate-400 font-normal">/{cls.maxStudents}</span></span>
@@ -295,10 +305,10 @@ const ClassList: React.FC = () => {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-3">
                                             {getStatusBadge(cls.status)}
                                         </td>
-                                        <td className="px-6 py-4 text-right">
+                                        <td className="px-6 py-3 text-right">
                                             <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 {hasPermission('edit_classes') && (
                                                     <button className="flex items-center justify-center p-2 rounded-lg text-[#616f89] dark:text-slate-400 hover:bg-white dark:hover:bg-slate-700 hover:text-primary dark:hover:text-primary hover:shadow-sm border border-transparent hover:border-gray-200 dark:hover:border-slate-600 transition-all" title="Sửa Lớp học">
@@ -313,7 +323,7 @@ const ClassList: React.FC = () => {
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                )})}
                             </tbody>
                         </table>
                     </div>
@@ -339,6 +349,13 @@ const ClassList: React.FC = () => {
                                     <div className="mt-2 flex items-center gap-1 text-xs text-[#616f89] dark:text-slate-400">
                                         <span className="material-symbols-outlined text-sm">calendar_month</span>
                                         <span>{cls.schedule}</span>
+                                    </div>
+                                    {/* Dates Info */}
+                                    <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                        {cls.startDate ? new Date(cls.startDate).toLocaleDateString('vi-VN') : 'TBD'} - 
+                                        <span className={isEndingSoon(cls.endDate) ? 'text-orange-600 font-bold ml-1' : 'ml-1'}>
+                                            {cls.endDate ? new Date(cls.endDate).toLocaleDateString('vi-VN') : 'TBD'}
+                                        </span>
                                     </div>
                                     {/* Location/Link Preview in Grid */}
                                     {cls.mode === 'online' ? (

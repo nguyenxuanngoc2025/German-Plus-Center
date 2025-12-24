@@ -3,11 +3,13 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
+import AdvancedFilterBar, { FilterState } from '../components/AdvancedFilterBar';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
     Legend, Cell
 } from 'recharts';
 import FinanceDrillDownModal from '../components/FinanceDrillDownModal';
+import StatCard from '../components/StatCard';
 
 type DrillState = {
     type: 'debt' | 'projected' | 'month_detail' | 'audit' | 'revenue_source';
@@ -19,8 +21,11 @@ const FinanceDashboard: React.FC = () => {
   const { finance, tuition, students, classes, currentUser, discrepancies, reconcileData, calculateFinancials } = useData();
   
   // --- FILTER STATE ---
-  const [dateFilter, setDateFilter] = useState('this_month'); // this_month, last_month, this_quarter, this_year, all
-  const [classFilter, setClassFilter] = useState('all');
+  const [filters, setFilters] = useState<FilterState>({
+      startDate: '', endDate: '', compareDateStart: '', compareDateEnd: '', isCompare: false,
+      source: 'all', classType: 'all', classId: 'all', status: 'all'
+  });
+
   const [drillDown, setDrillDown] = useState<DrillState>(null);
   
   // Integrity Sync State
@@ -28,37 +33,14 @@ const FinanceDashboard: React.FC = () => {
 
   // --- HELPER: DATE LOGIC ---
   const dateRange = useMemo(() => {
-      const now = new Date();
-      let start: Date | undefined;
-      let end: Date | undefined;
-
-      switch (dateFilter) {
-          case 'this_month':
-              start = new Date(now.getFullYear(), now.getMonth(), 1);
-              end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-              break;
-          case 'last_month':
-              start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-              end = new Date(now.getFullYear(), now.getMonth(), 0);
-              break;
-          case 'this_quarter':
-              const q = Math.floor(now.getMonth() / 3);
-              start = new Date(now.getFullYear(), q * 3, 1);
-              end = new Date(now.getFullYear(), q * 3 + 3, 0);
-              break;
-          case 'this_year':
-              start = new Date(now.getFullYear(), 0, 1);
-              end = new Date(now.getFullYear(), 11, 31);
-              break;
-          default:
-              start = undefined;
-              end = undefined;
-      }
-      return { start, end };
-  }, [dateFilter]);
+      // If start/end dates are provided by FilterBar, use them. Otherwise use full range.
+      return { 
+          start: filters.startDate ? new Date(filters.startDate) : undefined, 
+          end: filters.endDate ? new Date(filters.endDate) : undefined 
+      };
+  }, [filters.startDate, filters.endDate]);
 
   // --- USE CENTRALIZED CALCULATION ---
-  // Note: calculateFinancials already handles null dates as "All Time"
   const stats = useMemo(() => {
       return calculateFinancials(dateRange.start, dateRange.end);
   }, [dateRange, calculateFinancials, finance, tuition]);
@@ -68,19 +50,23 @@ const FinanceDashboard: React.FC = () => {
       const filteredFinance = finance.filter(f => {
           if (!dateRange.start || !dateRange.end) return true;
           const d = new Date(f.date);
-          return d >= dateRange.start && d <= dateRange.end;
+          const end = new Date(dateRange.end);
+          end.setHours(23, 59, 59);
+          return d >= dateRange.start && d <= end;
       });
 
-      // Group by Label based on filter
       const dataMap: Record<string, { income: number, expense: number }> = {};
       
       const getLabel = (dateStr: string) => {
           const date = new Date(dateStr);
-          if (dateFilter === 'this_year') return `T${date.getMonth() + 1}`;
+          const rangeDays = dateRange.start && dateRange.end 
+            ? (dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 3600 * 24) 
+            : 365;
+
+          if (rangeDays > 32) return `T${date.getMonth() + 1}`;
           return `${date.getDate()}/${date.getMonth() + 1}`;
       };
 
-      // Fill Income & Expense
       filteredFinance.forEach(f => {
           const label = getLabel(f.date);
           if (!dataMap[label]) dataMap[label] = { income: 0, expense: 0 };
@@ -88,17 +74,21 @@ const FinanceDashboard: React.FC = () => {
           else dataMap[label].expense += f.amount;
       });
 
-      // Sort and Format
       return Object.keys(dataMap).map(label => ({
           name: label,
           income: dataMap[label].income,
           expense: dataMap[label].expense,
           profit: dataMap[label].income - dataMap[label].expense
       })).sort((a,b) => {
-          // Simple sort logic assumption
-          return a.name.localeCompare(b.name, undefined, { numeric: true }); 
+          const extractNum = (s: string) => parseInt(s.replace(/\D/g, ''));
+          if (a.name.includes('/') && b.name.includes('/')) {
+              const [d1, m1] = a.name.split('/').map(Number);
+              const [d2, m2] = b.name.split('/').map(Number);
+              return m1 - m2 || d1 - d2;
+          }
+          return extractNum(a.name) - extractNum(b.name); 
       });
-  }, [finance, dateFilter, dateRange]);
+  }, [finance, dateRange]);
 
   const formatCurrency = (val: number) => {
       return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
@@ -106,7 +96,6 @@ const FinanceDashboard: React.FC = () => {
 
   // --- HANDLERS ---
   const handleDebtClick = () => {
-      // Deep Link to Invoice List with "Debt" filter
       navigate('/finance/invoices', { state: { filter: 'debt' } });
   };
 
@@ -123,6 +112,13 @@ const FinanceDashboard: React.FC = () => {
     <div className="flex-1 flex flex-col h-full min-w-0 bg-[#f8fafc] dark:bg-[#0f172a] font-display">
       <Header title="Trung tâm Tài chính" />
       
+      <AdvancedFilterBar 
+        onFilterChange={setFilters}
+        showClass={true}
+        showCompare={true}
+        className="border-b border-slate-200 dark:border-slate-700"
+      />
+
       <main className="flex-1 overflow-y-auto p-6 md:p-8 scroll-smooth">
         <div className="max-w-[1600px] mx-auto flex flex-col gap-8">
             
@@ -168,110 +164,53 @@ const FinanceDashboard: React.FC = () => {
                 </div>
             )}
 
-            {/* 1. UNIVERSAL FILTER BAR */}
-            <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-4 sticky top-0 z-10">
-                <div className="flex items-center gap-3 w-full xl:w-auto overflow-x-auto pb-1 xl:pb-0">
-                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <span className="material-symbols-outlined text-slate-500 text-[20px]">calendar_month</span>
-                        <select 
-                            value={dateFilter}
-                            onChange={(e) => setDateFilter(e.target.value)}
-                            className="bg-transparent border-none text-sm font-bold text-slate-700 dark:text-white focus:ring-0 cursor-pointer min-w-[100px]"
-                        >
-                            <option value="this_month">Tháng này</option>
-                            <option value="last_month">Tháng trước</option>
-                            <option value="this_quarter">Quý này</option>
-                            <option value="this_year">Năm nay</option>
-                            <option value="all">Toàn thời gian</option>
-                        </select>
-                    </div>
-
-                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <span className="material-symbols-outlined text-slate-500 text-[20px]">school</span>
-                        <select 
-                            value={classFilter}
-                            onChange={(e) => setClassFilter(e.target.value)}
-                            className="bg-transparent border-none text-sm font-bold text-slate-700 dark:text-white focus:ring-0 cursor-pointer min-w-[150px]"
-                        >
-                            <option value="all">Tất cả Lớp/Cơ sở</option>
-                            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                    </div>
-                </div>
-
-                <div className="flex gap-2 w-full xl:w-auto justify-end">
-                    <button onClick={() => setDrillDown({ type: 'audit' })} className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-sm">
-                        <span className="material-symbols-outlined text-[18px]">fact_check</span>
-                        Đối soát quỹ
-                    </button>
-                    <button className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-dark transition-colors shadow-md shadow-primary/20 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[18px]">download</span>
-                        Báo cáo
-                    </button>
-                </div>
+            {/* 1. EXTRA ACTIONS BAR */}
+            <div className="flex justify-end gap-2">
+                <button onClick={() => setDrillDown({ type: 'audit' })} className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-sm">
+                    <span className="material-symbols-outlined text-[18px]">fact_check</span>
+                    Đối soát quỹ
+                </button>
+                <button className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-dark transition-colors shadow-md shadow-primary/20 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px]">download</span>
+                    Báo cáo
+                </button>
             </div>
 
             {/* 2. EXECUTIVE SCORECARDS */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-                {/* Revenue Card */}
-                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group">
-                    <div className="absolute right-[-10px] top-[-10px] p-6 bg-emerald-50 dark:bg-emerald-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
-                    <div className="relative z-10">
-                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Tổng Doanh thu</p>
-                        <h3 className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{formatCurrency(stats.revenue)}</h3>
-                        <p className="text-xs text-slate-400 mt-1">Đã thực thu trong kỳ</p>
-                    </div>
-                    <div className="absolute bottom-4 right-4 p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-lg">
-                        <span className="material-symbols-outlined text-[24px]">payments</span>
-                    </div>
-                </div>
-
-                {/* Expenses Card */}
-                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group">
-                    <div className="absolute right-[-10px] top-[-10px] p-6 bg-red-50 dark:bg-red-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
-                    <div className="relative z-10">
-                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Tổng Chi phí</p>
-                        <h3 className="text-2xl font-extrabold text-red-600 dark:text-red-400">{formatCurrency(stats.expense)}</h3>
-                        <p className="text-xs text-slate-400 mt-1">Đã thực chi trong kỳ</p>
-                    </div>
-                    <div className="absolute bottom-4 right-4 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg">
-                        <span className="material-symbols-outlined text-[24px]">trending_down</span>
-                    </div>
-                </div>
-
-                {/* Debt Card - CLICK TO NAVIGATE */}
-                <div 
+                <StatCard 
+                    label="Tổng Doanh thu"
+                    value={formatCurrency(stats.revenue)}
+                    icon="payments"
+                    color="green"
+                    tooltip="Doanh thu thực tế (Cash-in) trong kỳ báo cáo."
+                    subtext="Đã thực thu trong kỳ"
+                />
+                <StatCard 
+                    label="Tổng Chi phí"
+                    value={formatCurrency(stats.expense)}
+                    icon="trending_down"
+                    color="red"
+                    tooltip="Tổng chi phí hoạt động (lương, điện nước, MKT...) trong kỳ."
+                    subtext="Đã thực chi trong kỳ"
+                />
+                <StatCard 
+                    label="Phải thu (Công nợ)"
+                    value={formatCurrency(stats.debt)}
+                    icon="pending_actions"
+                    color="orange"
+                    tooltip="Tổng số tiền học phí học viên còn nợ tính đến hiện tại."
+                    subtext="Tổng nợ hiện tại (Click để xem)"
                     onClick={handleDebtClick}
-                    className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group cursor-pointer hover:border-orange-300 transition-all ring-0 hover:ring-2 hover:ring-orange-100"
-                >
-                    <div className="absolute right-[-10px] top-[-10px] p-6 bg-orange-50 dark:bg-orange-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
-                    <div className="relative z-10">
-                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Phải thu (Công nợ)</p>
-                        <h3 className="text-2xl font-extrabold text-orange-600 dark:text-orange-400">{formatCurrency(stats.debt)}</h3>
-                        <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                            Tổng nợ hiện tại
-                            <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-                        </p>
-                    </div>
-                    <div className="absolute bottom-4 right-4 p-2 bg-orange-100 dark:bg-orange-900/30 text-orange-600 rounded-lg">
-                        <span className="material-symbols-outlined text-[24px]">pending_actions</span>
-                    </div>
-                </div>
-
-                {/* Profit Card */}
-                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group">
-                    <div className="absolute right-[-10px] top-[-10px] p-6 bg-blue-50 dark:bg-blue-900/10 rounded-full group-hover:scale-125 transition-transform duration-500"></div>
-                    <div className="relative z-10">
-                        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Lợi nhuận dự kiến</p>
-                        <h3 className={`text-2xl font-extrabold ${stats.profit >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-500'}`}>
-                            {formatCurrency(stats.profit + stats.debt)}
-                        </h3>
-                        <p className="text-xs text-slate-400 mt-1">(Thu + Nợ) - Chi</p>
-                    </div>
-                    <div className="absolute bottom-4 right-4 p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg">
-                        <span className="material-symbols-outlined text-[24px]">account_balance_wallet</span>
-                    </div>
-                </div>
+                />
+                <StatCard 
+                    label="Lợi nhuận dự kiến"
+                    value={formatCurrency(stats.profit + stats.debt)}
+                    icon="account_balance_wallet"
+                    color="blue"
+                    tooltip="Lợi nhuận ước tính = (Thực thu + Công nợ) - Thực chi."
+                    subtext="(Thu + Nợ) - Chi"
+                />
             </div>
 
             {/* 3. COMPARATIVE CHART */}

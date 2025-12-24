@@ -1,29 +1,60 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Header from '../components/Header';
 import { Student } from '../types';
 import StudentDetailsModal from '../components/StudentDetailsModal';
 import QuickPaymentModal from '../components/QuickPaymentModal';
 import ColumnSelector, { ColumnOption } from '../components/ColumnSelector';
+import AdvancedFilterBar, { FilterState } from '../components/AdvancedFilterBar';
 import Avatar from '../components/Avatar';
 import { useData } from '../context/DataContext';
+import { useLocation } from 'react-router-dom';
+import StatCard from '../components/StatCard';
 
 const Students: React.FC = () => {
-  const { students, recordStudentPayment, hasPermission } = useData();
+  const { students, recordStudentPayment, hasPermission, currentUser } = useData();
+  const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  
+  // --- FILTER STATE ---
+  const [filters, setFilters] = useState<FilterState>({
+      startDate: '', endDate: '', compareDateStart: '', compareDateEnd: '', isCompare: false,
+      source: 'all', classType: 'all', classId: 'all', status: 'all'
+  });
+
   const [sortConfig, setSortConfig] = useState<{ key: keyof Student; direction: 'asc' | 'desc' } | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [paymentStudent, setPaymentStudent] = useState<Student | null>(null);
 
-  // Column Configuration
-  const columnOptions: ColumnOption[] = [
-      { key: 'name', label: 'Học viên', isMandatory: true },
-      { key: 'class', label: 'Lớp học hiện tại' },
-      { key: 'status', label: 'Trạng thái' },
-      { key: 'balance', label: 'Học phí còn thiếu' },
-      { key: 'actions', label: 'Thao tác', isMandatory: true }
-  ];
+  // --- DEEP LINKING LOGIC ---
+  useEffect(() => {
+      if (location.state && (location.state as any).openId) {
+          const targetId = (location.state as any).openId;
+          const target = students.find(s => s.id === targetId);
+          if (target) {
+              setSelectedStudent(target);
+              // Clear state to prevent reopening on refresh (optional but good UX)
+              window.history.replaceState({}, document.title);
+          }
+      }
+  }, [location.state, students]);
+
+  // Column Configuration - RESTRICT FINANCIAL INFO FOR TEACHERS
+  const columnOptions: ColumnOption[] = useMemo(() => {
+      const baseColumns: ColumnOption[] = [
+          { key: 'name', label: 'Học viên', isMandatory: true },
+          { key: 'class', label: 'Lớp học hiện tại' },
+          { key: 'status', label: 'Trạng thái' },
+          { key: 'actions', label: 'Thao tác', isMandatory: true }
+      ];
+
+      // Only show balance if NOT a teacher
+      if (currentUser?.role !== 'teacher') {
+          baseColumns.splice(3, 0, { key: 'balance', label: 'Học phí còn thiếu' });
+      }
+      return baseColumns;
+  }, [currentUser]);
+
   const [visibleColumns, setVisibleColumns] = useState<string[]>(columnOptions.map(c => c.key));
 
   const filteredStudents = useMemo(() => {
@@ -31,8 +62,14 @@ const Students: React.FC = () => {
         const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               student.code.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === 'all' || student.status === statusFilter;
-        return matchesSearch && matchesStatus;
+        
+        const matchesStatus = filters.status === 'all' || student.status === filters.status;
+        const matchesClass = filters.classId === 'all' || student.classId === filters.classId;
+
+        // Note: Students might not have `learningMode` directly, but it's on their class.
+        // For simplicity, we filter by what we have.
+        
+        return matchesSearch && matchesStatus && matchesClass;
       });
 
       if (sortConfig !== null) {
@@ -50,7 +87,7 @@ const Students: React.FC = () => {
         });
       }
       return data;
-  }, [students, searchTerm, statusFilter, sortConfig]);
+  }, [students, searchTerm, filters, sortConfig]);
 
   const handleSort = (key: keyof Student) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -95,42 +132,44 @@ const Students: React.FC = () => {
     <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark text-base">
       <Header title="Quản lý Học viên" />
       
+      <AdvancedFilterBar 
+        onFilterChange={setFilters}
+        showClass={true}
+        showStatus={true}
+        showDate={false} // Students list usually doesn't filter by date unless enrollment date, which is niche.
+        statusOptions={[
+            { label: 'Đang học', value: 'active' },
+            { label: 'Bảo lưu', value: 'suspended' },
+            { label: 'Đã nghỉ', value: 'inactive' }
+        ]}
+      />
+
       <div className="flex-1 overflow-y-auto p-6 md:p-8">
         <div className="max-w-[1600px] mx-auto flex flex-col gap-8">
             
             {/* Top Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-[#e5e7eb] dark:border-slate-700 shadow-subtle flex items-center justify-between">
-                    <div>
-                        <p className="text-[#616f89] dark:text-slate-400 text-sm font-bold uppercase tracking-wide">Tổng học viên</p>
-                        <h3 className="text-[#111318] dark:text-white text-4xl font-bold mt-1">{students.length}</h3>
-                    </div>
-                    <div className="size-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-primary dark:text-blue-300">
-                        <span className="material-symbols-outlined text-[32px]">groups</span>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-[#e5e7eb] dark:border-slate-700 shadow-subtle flex items-center justify-between">
-                    <div>
-                        <p className="text-[#616f89] dark:text-slate-400 text-sm font-bold uppercase tracking-wide">Đang theo học</p>
-                        <h3 className="text-[#111318] dark:text-white text-4xl font-bold mt-1">
-                            {students.filter(s => s.status === 'active').length}
-                        </h3>
-                    </div>
-                    <div className="size-14 rounded-2xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-green-600 dark:text-green-300">
-                        <span className="material-symbols-outlined text-[32px]">school</span>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-[#1a202c] p-6 rounded-2xl border border-[#e5e7eb] dark:border-slate-700 shadow-subtle flex items-center justify-between">
-                    <div>
-                        <p className="text-[#616f89] dark:text-slate-400 text-sm font-bold uppercase tracking-wide">Nợ học phí</p>
-                        <h3 className="text-[#111318] dark:text-white text-4xl font-bold mt-1 text-red-600">
-                            {students.filter(s => (s.balance || 0) > 0).length}
-                        </h3>
-                    </div>
-                    <div className="size-14 rounded-2xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-red-600 dark:text-red-300">
-                        <span className="material-symbols-outlined text-[32px]">warning</span>
-                    </div>
-                </div>
+                <StatCard 
+                    label="Tổng học viên"
+                    value={students.length}
+                    icon="groups"
+                    color="blue"
+                    tooltip="Tổng số hồ sơ học viên đang được lưu trữ trên hệ thống (bao gồm cả đã nghỉ)."
+                />
+                <StatCard 
+                    label="Đang theo học"
+                    value={students.filter(s => s.status === 'active').length}
+                    icon="school"
+                    color="green"
+                    tooltip="Số lượng học viên có trạng thái 'Active' và đang tham gia lớp học."
+                />
+                <StatCard 
+                    label="Nợ học phí"
+                    value={students.filter(s => (s.balance || 0) > 0).length}
+                    icon="warning"
+                    color="red"
+                    tooltip="Số lượng học viên còn dư nợ học phí chưa thanh toán hết."
+                />
             </div>
 
             {/* Toolbar */}
@@ -146,16 +185,6 @@ const Students: React.FC = () => {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    <select 
-                        className="h-11 px-4 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-base text-[#111318] dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer min-w-[180px]"
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                    >
-                        <option value="all">Tất cả trạng thái</option>
-                        <option value="active">Đang học</option>
-                        <option value="suspended">Bảo lưu</option>
-                        <option value="inactive">Đã nghỉ</option>
-                    </select>
                  </div>
 
                  <div className="flex gap-3 w-full md:w-auto">

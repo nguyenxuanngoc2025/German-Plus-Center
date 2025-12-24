@@ -19,24 +19,26 @@ const EditClassModal: React.FC<Props> = ({ classData, onClose }) => {
     endDate: '',
     schedule: '',
     tuitionFee: 0,
-    status: 'active' as ClassItem['status']
+    status: 'active' as ClassItem['status'],
+    mode: 'offline' as 'online' | 'offline',
+    level: 'A1',
+    link: ''
   });
 
   useEffect(() => {
-    // Populate form with existing data or defaults
-    // Note: startDate/endDate might need to be added to ClassItem type in a real app, 
-    // here we mock or try to extract if available, otherwise default
     setFormData({
       name: classData.name,
       teacher: classData.teacher,
       maxStudents: classData.maxStudents,
-      location: classData.location || classData.link || '',
+      location: classData.location || '',
+      link: classData.link || '',
       schedule: classData.schedule,
       tuitionFee: classData.tuitionFee,
       status: classData.status,
-      // Default dates if not present in object
-      startDate: '2023-10-01', 
-      endDate: '2023-12-15'
+      mode: classData.mode,
+      level: classData.level || classData.name.split(' ')[2] || 'A1', // Infer or use existing
+      startDate: classData.startDate || '2023-10-01', 
+      endDate: classData.endDate || '2023-12-15'
     });
   }, [classData]);
 
@@ -62,15 +64,19 @@ const EditClassModal: React.FC<Props> = ({ classData, onClose }) => {
         name: formData.name,
         teacher: formData.teacher,
         maxStudents: Number(formData.maxStudents),
-        location: classData.mode === 'offline' ? formData.location : undefined,
-        link: classData.mode === 'online' ? formData.location : undefined,
+        location: formData.mode === 'offline' ? formData.location : undefined,
+        link: formData.mode === 'online' ? formData.link : undefined,
+        mode: formData.mode,
+        level: formData.level,
         schedule: formData.schedule,
         tuitionFee: Number(formData.tuitionFee),
         status: formData.status,
-        progress: newProgress
+        progress: newProgress,
+        startDate: formData.startDate,
+        endDate: formData.endDate
     });
 
-    alert("Cập nhật thông tin lớp học thành công!");
+    alert("Cập nhật cài đặt lớp học thành công!");
     onClose();
   };
 
@@ -80,7 +86,10 @@ const EditClassModal: React.FC<Props> = ({ classData, onClose }) => {
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c]">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Chỉnh sửa Lớp học</h3>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">settings</span>
+              Cài đặt Lớp học
+          </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -96,6 +105,53 @@ const EditClassModal: React.FC<Props> = ({ classData, onClose }) => {
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                 />
+            </div>
+
+            {/* Mode Selection */}
+            <div>
+                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">Hình thức học</label>
+                <select 
+                    className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm py-2 px-3 focus:ring-primary focus:border-primary dark:text-white cursor-pointer"
+                    value={formData.mode}
+                    onChange={(e) => setFormData({...formData, mode: e.target.value as 'online' | 'offline'})}
+                >
+                    <option value="offline">Offline (Tại trung tâm)</option>
+                    <option value="online">Online (Trực tuyến)</option>
+                </select>
+            </div>
+
+            {/* Level Selection */}
+            <div>
+                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">Trình độ</label>
+                <select 
+                    className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm py-2 px-3 focus:ring-primary focus:border-primary dark:text-white cursor-pointer"
+                    value={formData.level}
+                    onChange={(e) => setFormData({...formData, level: e.target.value})}
+                >
+                    <option value="A1">A1 (Cơ bản)</option>
+                    <option value="A2">A2 (Sơ cấp)</option>
+                    <option value="B1">B1 (Trung cấp)</option>
+                    <option value="B2">B2 (Trung cấp cao)</option>
+                    <option value="TestPrep">Luyện thi</option>
+                </select>
+            </div>
+
+            {/* Conditional Location/Link */}
+            <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">
+                    {formData.mode === 'online' ? 'Link phòng học (Zoom/Meet)' : 'Địa điểm phòng học'}
+                </label>
+                <div className="relative">
+                    <input 
+                        className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm py-2 pl-9 pr-3 focus:ring-primary focus:border-primary dark:text-white"
+                        value={formData.mode === 'online' ? formData.link : formData.location}
+                        onChange={(e) => formData.mode === 'online' ? setFormData({...formData, link: e.target.value}) : setFormData({...formData, location: e.target.value})}
+                        placeholder={formData.mode === 'online' ? 'https://meet.google.com/...' : 'P.301, Tầng 3...'}
+                    />
+                    <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">
+                        {formData.mode === 'online' ? 'link' : 'location_on'}
+                    </span>
+                </div>
             </div>
 
             <div>
@@ -117,14 +173,37 @@ const EditClassModal: React.FC<Props> = ({ classData, onClose }) => {
                 />
             </div>
 
+            <div>
+                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">Học phí (VNĐ)</label>
+                <input 
+                    type="number"
+                    className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm py-2 px-3 focus:ring-primary focus:border-primary dark:text-white font-semibold"
+                    value={formData.tuitionFee}
+                    onChange={(e) => setFormData({...formData, tuitionFee: Number(e.target.value)})}
+                />
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">Trạng thái lớp</label>
+                <select 
+                    className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm py-2 px-3 focus:ring-primary focus:border-primary dark:text-white cursor-pointer font-medium"
+                    value={formData.status}
+                    onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+                >
+                    <option value="upcoming">Đang tuyển sinh</option>
+                    <option value="active">Đang học</option>
+                    <option value="paused">Tạm dừng</option>
+                    <option value="finished">Đã kết thúc</option>
+                </select>
+            </div>
+
             <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">
-                    {classData.mode === 'online' ? 'Link học (Online)' : 'Phòng học / Địa điểm'}
-                </label>
+                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">Lịch học cố định</label>
                 <input 
                     className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm py-2 px-3 focus:ring-primary focus:border-primary dark:text-white"
-                    value={formData.location}
-                    onChange={(e) => setFormData({...formData, location: e.target.value})}
+                    value={formData.schedule}
+                    onChange={(e) => setFormData({...formData, schedule: e.target.value})}
+                    placeholder="T2 / T4 / T6 • 18:00"
                 />
             </div>
 
@@ -139,7 +218,7 @@ const EditClassModal: React.FC<Props> = ({ classData, onClose }) => {
             </div>
 
             <div>
-                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">Ngày kết thúc (Dự kiến)</label>
+                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">Ngày kết thúc</label>
                 <input 
                     type="date"
                     className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm py-2 px-3 focus:ring-primary focus:border-primary dark:text-white"
@@ -148,36 +227,13 @@ const EditClassModal: React.FC<Props> = ({ classData, onClose }) => {
                 />
             </div>
 
-            <div>
-                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">Lịch học</label>
-                <input 
-                    className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm py-2 px-3 focus:ring-primary focus:border-primary dark:text-white"
-                    value={formData.schedule}
-                    onChange={(e) => setFormData({...formData, schedule: e.target.value})}
-                    placeholder="T2 / T4 / T6 • 18:00"
-                />
-            </div>
-
-            <div>
-                <label className="block text-sm font-medium text-slate-900 dark:text-white mb-1.5">Trạng thái</label>
-                <select 
-                    className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm py-2 px-3 focus:ring-primary focus:border-primary dark:text-white"
-                    value={formData.status}
-                    onChange={(e) => setFormData({...formData, status: e.target.value as any})}
-                >
-                    <option value="active">Đang hoạt động</option>
-                    <option value="upcoming">Sắp khai giảng</option>
-                    <option value="full">Đã đầy</option>
-                </select>
-            </div>
-
           </div>
 
           <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-slate-100 dark:border-slate-700">
             <button 
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700"
+                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
             >
                 Hủy bỏ
             </button>

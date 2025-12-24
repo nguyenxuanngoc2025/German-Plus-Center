@@ -15,87 +15,98 @@ const Sidebar: React.FC = () => {
   // State for Sidebar Collapse
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Define the Menu Structure (Strict Role-Based)
+  // --- MENU CONFIGURATION ---
   const menuStructure = [
+      // 1. DASHBOARD (Admin, Manager, Sale only)
       {
           id: 'dashboard',
-          title: 'QUẢN TRỊ', 
+          title: 'TỔNG QUAN', 
           icon: 'space_dashboard', 
           path: '/',
-          roles: ['admin', 'manager', 'sale', 'teacher', 'student']
+          roles: ['admin', 'manager', 'sale'] 
       },
+      // 2. CUSTOMERS / CRM (Admin, Manager, Sale)
       {
           id: 'crm',
           title: 'KHÁCH HÀNG', 
           icon: 'groups',
           roles: ['admin', 'manager', 'sale'], 
           children: [
-              { id: 'leads', title: 'Leads', path: '/leads', icon: 'campaign', roles: ['admin', 'manager', 'sale'] },
-              { id: 'students', title: 'Học viên', path: '/students', icon: 'school', roles: ['admin', 'manager', 'sale'] }
+              { id: 'leads', title: 'Leads (Tiềm năng)', path: '/leads', icon: 'campaign', roles: ['admin', 'manager', 'sale'] },
+              { id: 'students', title: 'Danh sách Học viên', path: '/students', icon: 'school', roles: ['admin', 'manager', 'sale'] }
           ]
       },
+      // 3. TRAINING (Admin, Manager, Teacher) -> Hidden for Sale
       {
           id: 'training',
           title: 'ĐÀO TẠO',
           icon: 'school',
-          roles: ['admin', 'manager', 'sale', 'teacher', 'student'],
+          roles: ['admin', 'manager', 'teacher'],
           children: [
               { 
                   id: 'calendar', 
-                  title: 'Lịch học & Đào tạo', 
+                  title: 'Lịch dạy & Phòng học', 
                   path: '/calendar', 
                   icon: 'calendar_month', 
-                  roles: ['admin', 'manager', 'teacher', 'student'] 
+                  roles: ['admin', 'manager', 'teacher'] 
               },
               { 
                   id: 'classes', 
-                  title: 'Danh sách Lớp học', 
+                  title: 'Danh sách Lớp', 
                   path: '/classes', 
                   icon: 'class', 
-                  roles: ['admin', 'manager', 'sale', 'teacher', 'student'] 
+                  roles: ['admin', 'manager', 'teacher'] 
               },
               { 
                   id: 'staff', 
                   title: 'Quản lý Giáo viên', 
                   path: '/staff', 
                   icon: 'supervisor_account', 
-                  roles: ['admin', 'manager'] 
+                  roles: ['admin', 'manager'] // Teachers don't manage other teachers
               },
               { 
                   id: 'materials', 
                   title: 'Kho Tài liệu', 
                   path: '/documents', 
                   icon: 'folder_open', 
-                  roles: ['admin', 'manager', 'teacher', 'student'] 
-              },
-              { 
-                  id: 'profile', 
-                  title: 'Hồ sơ cá nhân', 
-                  path: '/profile', 
-                  icon: 'person', 
-                  roles: ['student'] 
+                  roles: ['admin', 'manager', 'teacher'] 
               }
           ]
       },
+      // 4. FINANCE (Admin only) -> Hidden for Sale, Teacher
       {
           id: 'finance',
           title: 'TÀI CHÍNH',
           icon: 'account_balance_wallet',
           roles: ['admin'], 
           children: [
-              { id: 'overview', title: 'Tổng quan', path: '/finance', icon: 'analytics' },
+              { id: 'overview', title: 'Dashboard Tài chính', path: '/finance', icon: 'analytics' },
               { id: 'debt', title: 'Quản lý Công nợ', path: '/finance/debt', icon: 'pending_actions' },
               { id: 'invoices', title: 'Phiếu thu', path: '/finance/invoices', icon: 'receipt_long' },
-              { id: 'expenses', title: 'Chi phí', path: '/finance/expenses', icon: 'account_balance' }
+              { id: 'expenses', title: 'Chi phí Vận hành', path: '/finance/expenses', icon: 'account_balance' }
           ]
       },
+      // 5. SETTINGS (Admin only)
       {
           id: 'settings',
           title: 'HỆ THỐNG',
           icon: 'settings',
           roles: ['admin'], 
           children: [
-              { id: 'system', title: 'Cài đặt', path: '/settings', icon: 'tune', roles: ['admin'] }
+              { id: 'system', title: 'Cấu hình chung', path: '/settings', icon: 'tune', roles: ['admin'] }
+          ]
+      },
+      // 6. STUDENT PORTAL (Student only)
+      {
+          id: 'student_portal',
+          title: 'GÓC HỌC TẬP',
+          icon: 'local_library',
+          roles: ['student'],
+          children: [
+              { id: 'my_schedule', title: 'Lịch học của tôi', path: '/calendar', icon: 'calendar_month', roles: ['student'] },
+              { id: 'my_results', title: 'Kết quả học tập', path: '/profile', icon: 'history_edu', roles: ['student'] },
+              { id: 'my_tuition', title: 'Thông báo học phí', path: '/profile', icon: 'notifications', roles: ['student'] },
+              { id: 'my_docs', title: 'Tài liệu khóa học', path: '/documents', icon: 'folder_shared', roles: ['student'] }
           ]
       }
   ];

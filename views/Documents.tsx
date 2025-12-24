@@ -4,9 +4,10 @@ import Header from '../components/Header';
 import UploadDocumentModal from '../components/UploadDocumentModal';
 import { useData } from '../context/DataContext';
 import { Document } from '../types';
+import StatCard from '../components/StatCard';
 
 const Documents: React.FC = () => {
-  const { documents, deleteDocument, hasPermission } = useData();
+  const { documents, deleteDocument, hasPermission, currentUser, students } = useData();
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -24,6 +25,20 @@ const Documents: React.FC = () => {
 
   const filteredDocuments = useMemo(() => {
     return documents.filter(doc => {
+      // --- ROLE BASED FILTERING ---
+      if (currentUser?.role === 'student') {
+          const myStudent = students[0]; // Simulation: pick first student
+          const myClassId = myStudent?.classId;
+          
+          if (doc.target === 'teachers') return false;
+          if (doc.target !== 'public' && doc.target !== myClassId) return false;
+      }
+      if (currentUser?.role === 'teacher') {
+          // Teachers see Public, Teachers-only, and likely any class material (simplified)
+          // Ideally check if doc.target is in teacher's classes list
+      }
+
+      // --- UI FILTERING ---
       const matchSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchType = typeFilter === 'all' || doc.type === typeFilter;
       // Simplified target filter logic for demo
@@ -33,7 +48,7 @@ const Documents: React.FC = () => {
       
       return matchSearch && matchType && matchTarget;
     });
-  }, [documents, searchTerm, typeFilter, targetFilter]);
+  }, [documents, searchTerm, typeFilter, targetFilter, currentUser, students]);
 
   const handleDelete = (id: string) => {
       if(window.confirm('Bạn có chắc chắn muốn xóa tài liệu này?')) {
@@ -65,6 +80,8 @@ const Documents: React.FC = () => {
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Thư viện Tài liệu</h1>
                     <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Quản lý tập trung tất cả tài liệu khóa học và biểu mẫu.</p>
                 </div>
+                {/* Hide Actions for Students */}
+                {currentUser?.role !== 'student' && (
                 <div className="flex items-center gap-3">
                     <button className="h-10 px-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 shadow-sm transition-all">
                         <span className="material-symbols-outlined text-lg">download</span>
@@ -78,47 +95,42 @@ const Documents: React.FC = () => {
                         <span>Tải lên mới</span>
                     </button>
                 </div>
+                )}
             </div>
 
-            {/* Stats Cards */}
+            {/* Stats Cards - Hide for Student */}
+            {currentUser?.role !== 'student' && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4 hover:border-primary/30 transition-colors cursor-default group">
-                    <div className="size-12 rounded-full bg-blue-50 dark:bg-blue-900/20 text-primary dark:text-blue-300 flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <span className="material-symbols-outlined">folder_copy</span>
-                    </div>
-                    <div>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{totalDocs}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Tổng tài liệu</p>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4 hover:border-secondary/30 transition-colors cursor-default group">
-                    <div className="size-12 rounded-full bg-orange-50 dark:bg-orange-900/20 text-secondary dark:text-orange-300 flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <span className="material-symbols-outlined">share</span>
-                    </div>
-                    <div>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{sharedDocs}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Đang chia sẻ</p>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4 hover:border-purple-300 transition-colors cursor-default group">
-                    <div className="size-12 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-300 flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <span className="material-symbols-outlined">cloud_download</span>
-                    </div>
-                    <div>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{(totalDownloads / 1000).toFixed(1)}k</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Lượt tải</p>
-                    </div>
-                </div>
-                <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4 hover:border-green-300 transition-colors cursor-default group">
-                    <div className="size-12 rounded-full bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-300 flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <span className="material-symbols-outlined">new_releases</span>
-                    </div>
-                    <div>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{newDocs}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Mới tháng này</p>
-                    </div>
-                </div>
+                <StatCard 
+                    label="Tổng tài liệu"
+                    value={totalDocs}
+                    icon="folder_copy"
+                    color="blue"
+                    tooltip="Tổng số file đang được lưu trữ trên hệ thống."
+                />
+                <StatCard 
+                    label="Đang chia sẻ"
+                    value={sharedDocs}
+                    icon="share"
+                    color="orange"
+                    tooltip="Số lượng tài liệu được chia sẻ riêng cho lớp hoặc giáo viên (không công khai)."
+                />
+                <StatCard 
+                    label="Lượt tải"
+                    value={`${(totalDownloads / 1000).toFixed(1)}k`}
+                    icon="cloud_download"
+                    color="purple"
+                    tooltip="Tổng số lượt tải xuống tài liệu từ trước đến nay."
+                />
+                <StatCard 
+                    label="Mới tháng này"
+                    value={newDocs}
+                    icon="new_releases"
+                    color="green"
+                    tooltip="Số tài liệu được tải lên trong tháng hiện tại."
+                />
             </div>
+            )}
 
             {/* Filter Bar */}
             <div className="bg-white dark:bg-[#1a202c] p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -150,6 +162,7 @@ const Documents: React.FC = () => {
                             <option value="audio">Audio</option>
                         </select>
                     </div>
+                    {currentUser?.role !== 'student' && (
                     <div className="md:col-span-3">
                         <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1.5">Đối tượng</label>
                         <select 
@@ -162,6 +175,7 @@ const Documents: React.FC = () => {
                             <option value="class">Lớp học</option>
                         </select>
                     </div>
+                    )}
                     <div className="md:col-span-1 flex items-end">
                         <button className="w-full h-10 flex items-center justify-center rounded-lg bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-600 hover:border-primary/50 transition-colors shadow-sm" title="Bộ lọc nâng cao">
                             <span className="material-symbols-outlined">tune</span>
