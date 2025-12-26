@@ -1,3 +1,4 @@
+
 import { Lead, ClassItem, FinanceRecord, ChartData, Student, Staff, Tuition, Document, AttendanceRecord } from "./types";
 
 // --- HELPERS FOR GENERATION ---
@@ -28,12 +29,14 @@ const generateMockAttendance = (): AttendanceRecord[] => {
     return history;
 };
 
-// --- 1. SEED CLASSES ---
+// --- 1. SEED CLASSES (UPDATED NAMING CONVENTION) ---
+// Formula: Name: K[Batch] [Mode] [Level] ([Schedule]) e.g., K24 Offline A1 (T246)
+// Formula: Code: K[Batch].[Level][ON/OFF] e.g., K24.A1OFF
 export const MOCK_CLASSES: ClassItem[] = [
-  { id: "C001", name: "Tiếng Đức A1", code: "K24", schedule: "T2 / T4 / T6 • 18:00", status: "active", mode: "offline", teacher: "Cô Muller", teacherAvatar: "", students: 0, maxStudents: 20, progress: 45, tuitionFee: 5000000, location: "P.301 - CS1", startDate: getRelativeDate(-45), endDate: getRelativeDate(45) },
-  { id: "C002", name: "Tiếng Đức A2", code: "K25", schedule: "T3 / T5 / CN • 19:30", status: "active", mode: "online", teacher: "Thầy Schmidt", teacherAvatar: "", students: 0, maxStudents: 20, progress: 30, tuitionFee: 6500000, link: "meet.google.com/abc", startDate: getRelativeDate(-30), endDate: getRelativeDate(60) },
-  { id: "C003", name: "Tiếng Đức B1", code: "K26", schedule: "T2 / T4 / T6 • 18:00", status: "active", mode: "offline", teacher: "Cô Weber", teacherAvatar: "", students: 0, maxStudents: 15, progress: 80, tuitionFee: 8000000, location: "P.302 - CS1", startDate: getRelativeDate(-80), endDate: getRelativeDate(10) },
-  { id: "C004", name: "Tiếng Đức B2", code: "K27", schedule: "T7 / CN • 09:00", status: "upcoming", mode: "online", teacher: "Thầy Klein", teacherAvatar: "", students: 0, maxStudents: 12, progress: 0, tuitionFee: 10000000, link: "meet.google.com/xyz", startDate: getRelativeDate(10), endDate: getRelativeDate(100) }
+  { id: "C001", name: "K24 Offline A1 (T246)", code: "K24.A1OFF", schedule: "T2 / T4 / T6 • 18:00", status: "active", mode: "offline", level: "A1", teacher: "Cô Muller", teacherAvatar: "", students: 0, maxStudents: 20, progress: 45, tuitionFee: 5000000, location: "P.301 - CS1", startDate: getRelativeDate(-45), endDate: getRelativeDate(45) },
+  { id: "C002", name: "K25 Online A2 (T35CN)", code: "K25.A2ON", schedule: "T3 / T5 / CN • 19:30", status: "active", mode: "online", level: "A2", teacher: "Thầy Schmidt", teacherAvatar: "", students: 0, maxStudents: 20, progress: 30, tuitionFee: 6500000, link: "meet.google.com/abc", startDate: getRelativeDate(-30), endDate: getRelativeDate(60) },
+  { id: "C003", name: "K26 Offline B1 (T246)", code: "K26.B1OFF", schedule: "T2 / T4 / T6 • 18:00", status: "active", mode: "offline", level: "B1", teacher: "Cô Weber", teacherAvatar: "", students: 0, maxStudents: 15, progress: 80, tuitionFee: 8000000, location: "P.302 - CS1", startDate: getRelativeDate(-80), endDate: getRelativeDate(10) },
+  { id: "C004", name: "K27 Online B2 (T7CN)", code: "K27.B2ON", schedule: "T7 / CN • 09:00", status: "upcoming", mode: "online", level: "B2", teacher: "Thầy Klein", teacherAvatar: "", students: 0, maxStudents: 12, progress: 0, tuitionFee: 10000000, link: "meet.google.com/xyz", startDate: getRelativeDate(10), endDate: getRelativeDate(100) }
 ];
 
 // --- 2. SEED STUDENTS & FINANCIALS (50 ENTRIES) ---

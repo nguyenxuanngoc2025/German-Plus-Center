@@ -113,10 +113,13 @@ const ClassList: React.FC = () => {
   };
 
   const getLevelBadge = (name: string) => {
-    const level = name.match(/[A-C][1-2]/)?.[0] || 'A1';
+    // Extract level from Name or fallback
+    const levelMatch = name.match(/A1|A2|B1|B2|C1/);
+    const level = levelMatch ? levelMatch[0] : 'N/A';
+    
     return (
-      <span className="text-xs font-medium text-[#616f89] dark:text-slate-400 bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded border border-gray-200 dark:border-slate-600">
-        Cấp độ {level}
+      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 uppercase">
+        {level}
       </span>
     );
   };
@@ -252,8 +255,9 @@ const ClassList: React.FC = () => {
                                     >
                                         <td className="px-6 py-3">
                                             <div className="flex flex-col">
-                                                <span className="font-semibold text-slate-800 dark:text-white text-base group-hover:text-primary transition-colors">{cls.name} - {cls.code}</span>
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <span className="font-bold text-slate-800 dark:text-white text-base group-hover:text-primary transition-colors">{cls.name}</span>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <span className="text-xs text-slate-500 font-mono">{cls.code}</span>
                                                     {getLevelBadge(cls.name)}
                                                 </div>
                                             </div>
@@ -339,7 +343,8 @@ const ClassList: React.FC = () => {
                         >
                             <div className="mb-4 flex items-start justify-between">
                                 <div>
-                                    <h3 className="font-bold text-[#111318] dark:text-white text-lg group-hover:text-primary transition-colors">{cls.name} - {cls.code}</h3>
+                                    <h3 className="font-bold text-[#111318] dark:text-white text-lg group-hover:text-primary transition-colors">{cls.name}</h3>
+                                    <div className="text-xs text-slate-400 font-mono mb-2">{cls.code}</div>
                                     <div className="mt-2 flex items-center gap-2">
                                         {getModeBadge(cls)}
                                         <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded border border-gray-200 dark:border-slate-600">

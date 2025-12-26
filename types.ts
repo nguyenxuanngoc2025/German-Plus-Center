@@ -39,6 +39,8 @@ export interface ClassItem {
   level?: string; // New: Specific Level (A1, B1...)
   teacher: string;
   teacherAvatar: string;
+  assistant?: string; // NEW: Assistant Teacher Name
+  assistantAvatar?: string; // NEW: Assistant Teacher Avatar
   students: number; // Current Enrollment (Ideally redundant if calculated, but kept for list views)
   maxStudents: number; // Max Capacity
   progress: number;
@@ -120,7 +122,7 @@ export interface Staff {
   name: string;
   email: string;
   phone: string;
-  role: 'admin' | 'manager' | 'teacher';
+  role: 'admin' | 'manager' | 'teacher' | 'assistant'; // Added 'assistant'
   status: 'active' | 'locked';
   avatar: string;
   joinDate: string;

@@ -410,7 +410,7 @@ const ClassDetails: React.FC = () => {
                 </div>
 
                 {/* 4. Bottom Section: Calendar */}
-                <div className="w-full min-h-[600px] bg-white dark:bg-[#1a202c] rounded-2xl shadow-sm">
+                <div className="w-full bg-white dark:bg-[#1a202c] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
                     <MiniClassCalendar 
                         classData={classData} 
                         onAttendanceClick={(date) => alert(`Chức năng điểm danh nhanh cho ngày ${new Date(date).toLocaleDateString()} đang được cập nhật.`)}

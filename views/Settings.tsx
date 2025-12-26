@@ -186,6 +186,7 @@ const Settings: React.FC = () => {
                                 <option value="admin">Super Admin</option>
                                 <option value="manager">Manager (Quản lý)</option>
                                 <option value="teacher">Giáo viên</option>
+                                <option value="assistant">Trợ giảng (Assistant)</option>
                                 <option value="sale">Tư vấn viên</option>
                                 <option value="student">Học viên</option>
                             </select>

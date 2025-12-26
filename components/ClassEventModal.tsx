@@ -31,8 +31,14 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
   const [activeTab, setActiveTab] = useState<'info' | 'attendance'>('info');
   const [editMode, setEditMode] = useState(false);
   
-  // Schedule State
-  const [newDate, setNewDate] = useState(event.start.toISOString().split('T')[0]);
+  // Schedule State: Initialize local date to handle timezone correctly
+  const [newDate, setNewDate] = useState(() => {
+      const year = event.start.getFullYear();
+      const month = String(event.start.getMonth() + 1).padStart(2, '0');
+      const day = String(event.start.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+  });
+  
   const [newTime, setNewTime] = useState(event.start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
   
   // Conflict & Logic State
@@ -48,6 +54,7 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
   );
 
   const isAdminOrManager = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+  const isAssistant = currentUser?.role === 'assistant';
 
   // --- CONFLICT DETECTION LOGIC ---
   useEffect(() => {
@@ -152,7 +159,9 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
       
       // 3. Confirm and Execute
       if (confirm(`Xác nhận dời lịch sang ${updated.toLocaleString('vi-VN')}? \n\nLƯU Ý: Hành động này sẽ tự động lùi toàn bộ lịch học phía sau!`)) {
-          onUpdate(updated); // This triggers updateScheduleChain in parent
+          // This triggers updateScheduleChain in parent
+          onUpdate(updated); 
+          // Note: Modal closing is handled by parent upon success
       }
       
       setIsLoading(false);
@@ -163,6 +172,12 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
   };
 
   const handleCancelSession = async () => {
+      // Format date strictly as YYYY-MM-DD to match stored offDays
+      const year = event.start.getFullYear();
+      const month = String(event.start.getMonth() + 1).padStart(2, '0');
+      const day = String(event.start.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
       if (!confirm(`Xác nhận BÁO NGHỈ buổi học này (${event.start.toLocaleDateString('vi-VN')})?\n\nHệ thống sẽ:\n1. Hủy buổi học này\n2. Tự động lùi toàn bộ lịch học phía sau 1 buổi\n3. Cập nhật ngày kết thúc khóa học`)) {
           return;
       }
@@ -170,13 +185,15 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
       setIsLoading(true);
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      const result = cancelClassSession(event.classId, event.start.toISOString().split('T')[0]);
+      const result = cancelClassSession(event.classId, dateStr);
       
       setIsLoading(false);
       
-      if (result) {
+      if (result.success) {
           alert(result.message);
           onClose();
+      } else {
+          alert("Có lỗi xảy ra: " + result.message);
       }
   };
 
@@ -187,6 +204,10 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
           alert("Đã lưu nội dung bài giảng và điểm danh!");
           onClose();
       }, 600);
+  };
+
+  const handleRestrictedAction = () => {
+      alert('Bạn không có quyền thực hiện thao tác này. Vui lòng liên hệ Quản lý.');
   };
 
   return (
@@ -300,8 +321,14 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
                                 <span className="material-symbols-outlined text-orange-500 text-[20px]">event_repeat</span>
                                 Báo nghỉ / Dời lịch
                             </h4>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" checked={editMode} onChange={() => setEditMode(!editMode)} className="sr-only peer" />
+                            <label className={`relative inline-flex items-center ${isAssistant ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                                <input 
+                                    type="checkbox" 
+                                    checked={editMode} 
+                                    onChange={() => isAssistant ? handleRestrictedAction() : setEditMode(!editMode)} 
+                                    className="sr-only peer" 
+                                    disabled={isAssistant}
+                                />
                                 <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
                             </label>
                         </div>
@@ -381,7 +408,9 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
                                 </button>
                             </div>
                         ) : (
-                            <p className="text-xs text-slate-500 italic">Kích hoạt để thay đổi thời gian hoặc báo nghỉ cho buổi học này.</p>
+                            <p className="text-xs text-slate-500 italic">
+                                {isAssistant ? 'Bạn không có quyền thực hiện thao tác này.' : 'Kích hoạt để thay đổi thời gian hoặc báo nghỉ cho buổi học này.'}
+                            </p>
                         )}
                     </div>
                 </div>
@@ -390,10 +419,12 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
                     <div className="flex justify-between items-center mb-2 px-1">
                         <span className="text-xs font-bold text-slate-500 uppercase">Danh sách lớp ({classStudents.length})</span>
                         <div className="flex items-center gap-2">
-                            <button onClick={onAddStudent} className="text-xs flex items-center gap-1 text-primary font-bold hover:bg-blue-50 px-2 py-1 rounded transition-colors">
-                                <span className="material-symbols-outlined text-[16px]">person_add</span>
-                                Thêm học viên
-                            </button>
+                            {!isAssistant && (
+                                <button onClick={onAddStudent} className="text-xs flex items-center gap-1 text-primary font-bold hover:bg-blue-50 px-2 py-1 rounded transition-colors">
+                                    <span className="material-symbols-outlined text-[16px]">person_add</span>
+                                    Thêm học viên
+                                </button>
+                            )}
                         </div>
                     </div>
                     {classStudents.map(student => (

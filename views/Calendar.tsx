@@ -1,663 +1,494 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
+import { useNavigate } from 'react-router-dom';
 import { ClassItem } from '../types';
-import ClassEventModal from '../components/ClassEventModal';
-import StudentSelectorModal from '../components/StudentSelectorModal';
 
 interface CalendarEvent {
-  id: string; // combination of classId + date
+  id: string; 
   classId: string;
   title: string;
-  code: string; // Added code for short display
+  code: string;
   start: Date;
   end: Date;
   teacher: string;
+  teacherAvatar?: string;
   room: string;
-  level: string; // A1, A2...
-  status: 'active' | 'upcoming' | 'full' | 'finished' | 'paused'; // Added status for coloring
-  hasConflict?: boolean; // New collision flag
-  color: string; // Added required color prop
-  index?: number; // Session Index
-  isLocked?: boolean; // Lock status
-  mode: 'online' | 'offline'; // NEW: To distinguish display
-  link?: string; // NEW: For online classes
-  location?: string; // NEW: Full location string
+  status: 'active' | 'upcoming' | 'full' | 'finished' | 'paused';
+  color: string;
+  index?: number;
+  isLocked?: boolean;
+  mode: 'online' | 'offline';
+  link?: string;
+  location?: string;
+  isExtra?: boolean;
+}
+
+// Popup Position Interface
+interface PopupState {
+    visible: boolean;
+    x: number;
+    y: number;
+    event: CalendarEvent | null;
 }
 
 const Calendar: React.FC = () => {
-  const { classes, currentUser, enrollStudent, convertLeadToStudent, students, updateScheduleChain, generateClassSessions } = useData();
+  const { classes, generateClassSessions, updateScheduleChain, cancelClassSession, currentUser } = useData();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month');
+  const navigate = useNavigate();
   
-  // Advanced Filters
-  const [teacherFilter, setTeacherFilter] = useState('');
-  const [levelFilter, setLevelFilter] = useState('');
-  const [roomFilter, setRoomFilter] = useState(''); // New Room Filter
-  const [isMySchedule, setIsMySchedule] = useState(false); // "My Schedule" Toggle
+  // Filters
+  const [teacherFilter, setTeacherFilter] = useState('Tất cả');
+  const [classTypeFilter, setClassTypeFilter] = useState('Tất cả');
 
-  // Modals
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [showStudentSelector, setShowStudentSelector] = useState(false);
-  const [targetClassId, setTargetClassId] = useState<string | null>(null);
+  // Smart Popup State
+  const [popup, setPopup] = useState<PopupState>({ 
+      visible: false, x: 0, y: 0, event: null
+  });
+  const popupRef = useRef<HTMLDivElement>(null);
 
-  // DRAG & DROP STATE & PROCESSING
-  const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false); // NEW: Loading state for chain reaction
-  const [toastMessage, setToastMessage] = useState<string | null>(null); // NEW: Toast state
+  const isAssistant = currentUser?.role === 'assistant';
 
-  // Auto-hide toast
+  // Close popup when clicking outside
   useEffect(() => {
-      if (toastMessage) {
-          const timer = setTimeout(() => setToastMessage(null), 5000);
-          return () => clearTimeout(timer);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+        setPopup(prev => ({ ...prev, visible: false }));
       }
-  }, [toastMessage]);
+    };
+    const handleScroll = () => setPopup(prev => ({ ...prev, visible: false }));
 
-  // --- LOGIC: GENERATE EVENTS USING SMART ENGINE ---
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', handleScroll, true); 
+    
+    return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, []);
+
+  // --- DATA ENGINE ---
   const events = useMemo(() => {
     let generatedEvents: CalendarEvent[] = [];
-    const today = new Date();
-    const rangeStart = new Date(today.getFullYear(), today.getMonth() - 2, 1);
-    const rangeEnd = new Date(today.getFullYear(), today.getMonth() + 3, 0);
-
-    // Identify current user context
-    const isStudent = currentUser?.role === 'student';
-    const isTeacher = currentUser?.role === 'teacher';
+    const rangeStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1); 
+    const rangeEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0); 
     
-    // For Simulation/Demo: If student, pick the first student in DB as "Me" to find class
-    const myClassId = isStudent ? students[0]?.classId : null;
+    rangeStart.setDate(rangeStart.getDate() - 7);
+    rangeEnd.setDate(rangeEnd.getDate() + 7);
 
     classes.forEach(cls => {
-        // --- ROLE BASED FILTERING ---
-        if (isStudent && cls.id !== myClassId) return; // Student only sees their class
-        if (isTeacher && cls.teacher !== currentUser?.name) return; // Teacher only sees their classes (Auto "My Schedule")
-
-        // --- UI FILTERING ---
-        if (!isStudent && !isTeacher) {
-             if (isMySchedule && currentUser && cls.teacher !== currentUser.name) return;
-             if (!isMySchedule && teacherFilter && cls.teacher !== teacherFilter) return;
+        if (teacherFilter !== 'Tất cả' && cls.teacher !== teacherFilter) return;
+        if (classTypeFilter !== 'Tất cả') {
+            if (classTypeFilter === 'Online' && cls.mode !== 'online') return;
+            if (classTypeFilter === 'Offline' && cls.mode !== 'offline') return;
         }
-        
-        if (levelFilter && !cls.name.includes(levelFilter)) return;
-        if (roomFilter && (cls.mode === 'online' ? 'Online' : 'Offline').indexOf(roomFilter) === -1 && !cls.location?.includes(roomFilter)) return;
 
-        // Parse Time from Schedule String
         const [_, timePart] = cls.schedule.split('•').map(s => s.trim());
-        const [startHour, startMinute] = timePart ? timePart.split(':').map(Number) : [18, 0];
-        const durationMinutes = 90;
-
-        // Determine Room Display
-        let roomDisplay = 'TBD';
-        if (cls.mode === 'online') roomDisplay = 'Online';
-        else if (cls.location) {
-            if (cls.location.includes('Phòng')) roomDisplay = 'P.' + cls.location.split('Phòng')[1].trim().split(' ')[0];
-            else roomDisplay = 'P.101'; // Mock default
-        }
-
-        // Determine Color
-        let color = 'blue';
-        if (cls.status === 'upcoming') color = 'emerald';
-        else if (cls.status === 'full') color = 'orange';
-        else if (cls.status === 'paused') color = 'gray';
-        else if (cls.status === 'finished') color = 'slate';
-
-        // USE THE GENERATOR ENGINE
         const sessions = generateClassSessions(cls);
 
         sessions.forEach(session => {
             const sessionStart = new Date(`${session.date}T${timePart || '18:00'}`);
-            
-            // Basic Range Check
             if (sessionStart < rangeStart || sessionStart > rangeEnd) return;
 
             const sessionEnd = new Date(sessionStart);
-            sessionEnd.setMinutes(sessionStart.getMinutes() + durationMinutes);
+            sessionEnd.setMinutes(sessionStart.getMinutes() + 90); 
 
             generatedEvents.push({
                 id: session.id,
                 classId: cls.id,
-                title: session.index > 0 ? `${cls.name} (B.${session.index})` : `${cls.name} (Bù)`, // Add Index to Title
-                code: cls.code,
+                title: cls.name, // Keep Full Name for Popover
+                code: cls.code,  // Keep Code for Bar Display
                 start: sessionStart,
                 end: sessionEnd,
                 teacher: cls.teacher,
-                room: roomDisplay,
-                level: cls.name.split(' ')[2] || 'A1',
+                teacherAvatar: cls.teacherAvatar,
+                room: cls.mode === 'online' ? (cls.link || 'Online') : (cls.location?.split(',')[0] || 'Tại trung tâm'),
                 status: cls.status,
-                color: session.isExtra ? 'purple' : color,
+                color: session.isExtra ? 'purple' : 'blue',
                 index: session.index,
-                isLocked: session.isLocked, // Lock property
-                mode: cls.mode, // Pass Mode
-                link: cls.link, // Pass Link
-                location: cls.location // Pass Full Location
+                isLocked: session.isLocked,
+                mode: cls.mode,
+                link: cls.link,
+                location: cls.location,
+                isExtra: session.isExtra
             });
         });
     });
-
-    // 2. Detect Collisions (O(N^2) for simplicity in demo, optimize for prod)
-    for (let i = 0; i < generatedEvents.length; i++) {
-        for (let j = i + 1; j < generatedEvents.length; j++) {
-            const e1 = generatedEvents[i];
-            const e2 = generatedEvents[j];
-
-            if (e1.start < e2.end && e1.end > e2.start) {
-                const isRoomConflict = e1.room !== 'Online' && e1.room === e2.room;
-                const isTeacherConflict = e1.teacher === e2.teacher;
-
-                if (isRoomConflict || isTeacherConflict) {
-                    generatedEvents[i].hasConflict = true;
-                    generatedEvents[j].hasConflict = true;
-                }
-            }
-        }
-    }
-
     return generatedEvents;
-  }, [classes, teacherFilter, levelFilter, roomFilter, isMySchedule, currentUser, students, generateClassSessions]);
+  }, [classes, currentDate, teacherFilter, classTypeFilter, generateClassSessions]);
 
-  // --- NAVIGATION HANDLERS ---
-  const handlePrev = () => {
-      const newDate = new Date(currentDate);
-      if (viewMode === 'month') newDate.setMonth(newDate.getMonth() - 1);
-      else newDate.setDate(newDate.getDate() - 1);
-      setCurrentDate(newDate);
-  };
-
-  const handleNext = () => {
-      const newDate = new Date(currentDate);
-      if (viewMode === 'month') newDate.setMonth(newDate.getMonth() + 1);
-      else newDate.setDate(newDate.getDate() + 1);
-      setCurrentDate(newDate);
-  };
-
-  const handleToday = () => setCurrentDate(new Date());
-
-  const handleAddEvent = (date: Date) => {
-      alert(`Mở form xếp lịch/thêm buổi học cho ngày: ${date.toLocaleDateString('vi-VN')}`);
-  };
-
-  const handleAddStudentToClass = (classId: string) => {
-      setTargetClassId(classId);
-      setShowStudentSelector(true);
-  };
-
-  const handleConfirmAddStudents = (selectedStudents: any[], selectedLeads: any[]) => {
-      if (!targetClassId) return;
-      const targetClass = classes.find(c => c.id === targetClassId);
+  // --- SMART POSITIONING LOGIC ---
+  const handleEventClick = (e: React.MouseEvent, evt: CalendarEvent, colIndex: number) => {
+      e.stopPropagation();
+      const target = e.currentTarget as HTMLElement;
+      const rect = target.getBoundingClientRect();
       
-      selectedStudents.forEach(s => enrollStudent(s.id, targetClassId));
-      selectedLeads.forEach(l => convertLeadToStudent(l.id, targetClassId, targetClass ? targetClass.tuitionFee : 0));
+      // Viewport Dimensions
+      const viewportW = window.innerWidth;
+      const viewportH = window.innerHeight;
       
-      alert(`Đã thêm ${selectedStudents.length + selectedLeads.length} học viên vào lớp!`);
-      setShowStudentSelector(false);
-      setTargetClassId(null);
-      // Close detail modal as well to refresh if needed, or keep open
-      setSelectedEvent(null); 
-  };
+      // Popover Dimensions (Approximate)
+      const popoverW = 320;
+      const popoverH = 340; 
+      const gap = 8; // Required Offset
+      const headerHeight = 80; // Safety top margin
 
-  // --- DRAG & DROP HANDLERS ---
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, event: CalendarEvent) => {
-      if (event.isLocked) {
-          e.preventDefault();
-          return;
-      }
-      setDraggedEvent(event);
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', JSON.stringify(event));
-  };
+      let x = 0;
+      let y = 0;
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault(); // Necessary to allow dropping
-      e.dataTransfer.dropEffect = 'move';
-  };
-
-  // --- MODIFIED DROP HANDLER: ASYNC & CHAIN REACTION ---
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetDate: Date, targetTime?: string) => {
-      e.preventDefault();
-      if (!draggedEvent || draggedEvent.isLocked) return;
-
-      const oldDateStr = draggedEvent.start.toISOString().split('T')[0];
+      // 1. HORIZONTAL ALIGNMENT (Side Flip)
+      // Logic: If Mon/Tue (Col 0,1) -> Force Right
+      //        If Sat/Sun (Col 5,6) -> Force Left
+      //        Else -> Smart Fit (Default Right)
       
-      // Construct new DateTime
-      let newDateObj = new Date(targetDate);
-      if (targetTime) {
-          const [hours, minutes] = targetTime.split(':').map(Number);
-          newDateObj.setHours(hours, minutes, 0);
+      let placeRight = true;
+      if (colIndex >= 5) {
+          placeRight = false; // Force Left for Sat/Sun
+      } else if (colIndex <= 1) {
+          placeRight = true; // Force Right for Mon/Tue
       } else {
-          // Keep original time if dropping on a month cell
-          newDateObj.setHours(draggedEvent.start.getHours(), draggedEvent.start.getMinutes(), 0);
-      }
-      
-      const newDateStr = newDateObj.toISOString();
-
-      // Avoid same day drop (unless time change)
-      if (oldDateStr === newDateObj.toISOString().split('T')[0] && !targetTime) {
-          setDraggedEvent(null);
-          return; 
-      }
-
-      if (window.confirm(`Xác nhận đổi lịch lớp ${draggedEvent.code} (Buổi ${draggedEvent.index || 'Bù'}) sang ${newDateObj.toLocaleString('vi-VN')}?`)) {
-          // 1. TRIGGER LOADING STATE
-          setIsProcessing(true);
-
-          // 2. SIMULATE API CALL / PROCESSING DELAY
-          await new Promise(resolve => setTimeout(resolve, 800));
-
-          // 3. EXECUTE UPDATE (CHAIN REACTION)
-          const result = updateScheduleChain(draggedEvent.classId, draggedEvent.index || 0, newDateStr);
-          
-          // 4. STOP LOADING & FEEDBACK
-          setIsProcessing(false);
-          
-          if (result?.success) {
-              setToastMessage(result.message);
+          // Middle columns: Check if right side has space
+          if (rect.right + gap + popoverW > viewportW) {
+              placeRight = false;
           }
       }
-      
-      setDraggedEvent(null);
+
+      if (placeRight) {
+          x = rect.right + gap;
+      } else {
+          x = rect.left - popoverW - gap;
+      }
+
+      // 2. VERTICAL ALIGNMENT (Anti-Clipping)
+      // Default: Align Top of Popover with Top of Event
+      y = rect.top;
+
+      // Check Bottom Overflow
+      if (y + popoverH > viewportH) {
+          // Shift up to align bottoms
+          y = rect.bottom - popoverH;
+      }
+
+      // Check Top Overflow (Header Clipping)
+      // If the calculated y is too high (under the header), push it down
+      if (y < headerHeight) {
+          y = headerHeight + 10;
+      }
+
+      // Boundary Safety
+      if (x < 10) x = 10;
+      if (x + popoverW > viewportW) x = viewportW - popoverW - 10;
+
+      setPopup({ visible: true, x, y, event: evt });
   };
 
-  const getEventsForDay = (date: Date) => {
-      return events.filter(e => 
-          e.start.getDate() === date.getDate() &&
-          e.start.getMonth() === date.getMonth() &&
-          e.start.getFullYear() === date.getFullYear()
-      ).sort((a, b) => {
-          // Sort Logic: Conflict first -> Active Status -> Time
-          if (a.hasConflict && !b.hasConflict) return -1;
-          if (!a.hasConflict && b.hasConflict) return 1;
-          if (a.status === 'active' && b.status !== 'active') return -1;
-          if (a.status !== 'active' && b.status === 'active') return 1;
-          return a.start.getTime() - b.start.getTime();
-      });
+  // --- ACTIONS ---
+  const handleShiftSchedule = (event: CalendarEvent) => {
+      if (isAssistant) {
+          alert('Bạn không có quyền thực hiện thao tác này (Chỉ Admin/Manager/Giáo viên chính).');
+          return;
+      }
+      const days = parseInt(prompt("Nhập số ngày muốn lùi (ví dụ: 7):", "7") || "0");
+      if (days > 0) {
+          const newDate = new Date(event.start);
+          newDate.setDate(newDate.getDate() + days);
+          const isoString = newDate.toISOString().split('T')[0] + 'T' + event.start.toTimeString().slice(0,5);
+          
+          const result = updateScheduleChain(event.classId, event.index || 0, isoString);
+          if (result?.success) {
+              alert(result.message);
+              setPopup(prev => ({...prev, visible: false}));
+          }
+      }
   };
 
-  // Helper to format HH:MM
-  const formatTime = (date: Date) => date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  const handleCancelSession = (event: CalendarEvent) => {
+      if (isAssistant) {
+          alert('Bạn không có quyền thực hiện thao tác này (Chỉ Admin/Manager/Giáo viên chính).');
+          return;
+      }
+      if (confirm(`Xác nhận HỦY buổi học ${event.title} ngày ${event.start.toLocaleDateString('vi-VN')}?\n\nLịch sẽ tự động được tịnh tiến.`)) {
+          const dateStr = event.start.toISOString().split('T')[0];
+          const result = cancelClassSession(event.classId, dateStr);
+          if (result?.success) {
+              alert(result.message);
+              setPopup(prev => ({...prev, visible: false}));
+          }
+      }
+  };
 
-  // --- UI: MONTH VIEW (EVENT BLOCKS) ---
-  const renderMonthView = () => {
+  const handleAttendanceRedirect = (event: CalendarEvent) => {
+      navigate(`/classes/${event.classId}`);
+      setPopup(prev => ({...prev, visible: false}));
+  };
+
+  // --- RENDER HELPERS ---
+  const getDaysArray = () => {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
       const firstDay = new Date(year, month, 1);
       const lastDay = new Date(year, month + 1, 0);
       
-      let startDayOfWeek = firstDay.getDay() || 7; 
-      const paddingDays = startDayOfWeek - 1;
+      const startDayOfWeek = (firstDay.getDay() + 6) % 7; 
 
       const days = [];
       const prevMonthLastDay = new Date(year, month, 0).getDate();
-      for (let i = paddingDays; i > 0; i--) {
-          days.push({ day: prevMonthLastDay - i + 1, type: 'prev', date: new Date(year, month - 1, prevMonthLastDay - i + 1) });
+      
+      for (let i = startDayOfWeek; i > 0; i--) {
+          days.push({ date: new Date(year, month - 1, prevMonthLastDay - i + 1), type: 'prev' });
       }
+      
       for (let i = 1; i <= lastDay.getDate(); i++) {
-          days.push({ day: i, type: 'current', date: new Date(year, month, i) });
+          days.push({ date: new Date(year, month, i), type: 'current' });
       }
-      const totalCells = 42; 
-      const remainingCells = totalCells - days.length;
+      
+      const totalSoFar = days.length;
+      const remainingCells = (7 - (totalSoFar % 7)) % 7;
+      
       for (let i = 1; i <= remainingCells; i++) {
-          days.push({ day: i, type: 'next', date: new Date(year, month + 1, i) });
+          days.push({ date: new Date(year, month + 1, i), type: 'next' });
       }
-
-      return (
-          <div className="flex-1 flex flex-col bg-white dark:bg-[#1a202c] border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
-              {/* Calendar Header with standardized style */}
-              <div className="grid grid-cols-7 border-b border-[#EDF2F7] dark:border-slate-700">
-                  {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((d, i) => (
-                      <div key={d} className={`py-3 text-center text-xs font-semibold uppercase ${i === 6 ? 'text-[#E53E3E]' : 'text-[#4A5568]'} dark:text-slate-400 bg-white dark:bg-[#1a202c]`}>
-                          {d}
-                      </div>
-                  ))}
-              </div>
-              <div className="grid grid-cols-7 flex-1 auto-rows-fr">
-                  {days.map((d, idx) => {
-                      const dayEvents = getEventsForDay(d.date);
-                      const isToday = new Date().toDateString() === d.date.toDateString();
-                      const isSunday = d.date.getDay() === 0;
-                      
-                      // Limit display to 3 events per day
-                      const displayEvents = dayEvents.slice(0, 3);
-                      const remainingCount = dayEvents.length - 3;
-
-                      return (
-                          <div 
-                            key={idx} 
-                            onClick={() => { setCurrentDate(d.date); setViewMode('day'); }}
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => handleDrop(e, d.date)}
-                            className={`
-                                min-h-[140px] border-b border-r border-[#EDF2F7] dark:border-slate-700/50 p-2 transition-all cursor-pointer relative group 
-                                ${d.type !== 'current' ? 'text-slate-300 dark:text-slate-600' : ''}
-                                ${isSunday ? 'bg-[#FFF5F5] dark:bg-red-900/5' : 'hover:bg-[#F7FAFC] dark:hover:bg-slate-800'}
-                            `}
-                          >
-                              <div className="flex justify-between items-start mb-2 pointer-events-none">
-                                <span className={`
-                                    text-xs flex items-center justify-center size-7 rounded-full transition-colors font-medium
-                                    ${isToday ? 'border border-[#1e3a8a] text-[#1e3a8a] font-bold' : isSunday && d.type === 'current' ? 'text-[#E53E3E]' : ''}
-                                `}>
-                                    {d.day}
-                                </span>
-                                <div className="flex items-center gap-1 pointer-events-auto">
-                                    {/* Add Event Button (Visible on Hover) - Hide for Student */}
-                                    {currentUser?.role !== 'student' && (
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleAddEvent(d.date); }}
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded text-slate-400 hover:text-primary"
-                                        title="Thêm lịch"
-                                    >
-                                        <span className="material-symbols-outlined text-[18px]">add_circle</span>
-                                    </button>
-                                    )}
-                                </div>
-                              </div>
-                              
-                              {/* Event Blocks */}
-                              <div className="flex flex-col gap-1.5">
-                                  {displayEvents.map(evt => {
-                                      // Updated Pastel Color Logic
-                                      let bgClass = 'bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'; // Default Active (Pastel Blue)
-                                      
-                                      if (evt.isLocked) {
-                                          bgClass = 'bg-slate-50 text-slate-500 border border-slate-200 cursor-not-allowed opacity-80 grayscale'; // Locked/Past
-                                      } else if (evt.hasConflict) {
-                                          bgClass = 'bg-white text-slate-700 border border-red-400 border-l-4 border-l-red-500 hover:bg-red-50 dark:bg-slate-800 dark:text-slate-200 dark:border-red-500'; 
-                                      } else if (evt.color === 'purple') {
-                                          bgClass = 'bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800'; 
-                                      } else if (evt.status === 'upcoming') {
-                                          bgClass = 'bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800'; 
-                                      }
-                                      
-                                      return (
-                                          <div 
-                                            key={evt.id} 
-                                            draggable={!evt.isLocked}
-                                            onDragStart={(e) => handleDragStart(e, evt)}
-                                            onClick={(e) => { e.stopPropagation(); setSelectedEvent(evt); }}
-                                            className={`px-2 py-1.5 rounded-md text-[10px] shadow-sm transition-all flex flex-col gap-0.5 ${bgClass} ${draggedEvent?.id === evt.id ? 'opacity-50 border-dashed' : ''} ${!evt.isLocked ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                                            title={`${evt.title}\nGiáo viên: ${evt.teacher}\nPhòng: ${evt.room}${evt.isLocked ? '\n(Đã khóa - Đã diễn ra hoặc đã điểm danh)' : ''}`}
-                                          >
-                                              <div className="flex items-center justify-between w-full pointer-events-none">
-                                                  <span className="font-semibold opacity-80 flex items-center gap-1">
-                                                    {formatTime(evt.start)} - {formatTime(evt.end)}
-                                                  </span>
-                                                  <div className="flex gap-1">
-                                                      {evt.isLocked && <span className="material-symbols-outlined text-[10px] text-slate-400">lock</span>}
-                                                      {evt.hasConflict && <span className="material-symbols-outlined text-[14px] text-red-500">warning</span>}
-                                                  </div>
-                                              </div>
-                                              <div className="font-bold truncate text-xs pointer-events-none">
-                                                  {evt.title}
-                                              </div>
-                                          </div>
-                                      );
-                                  })}
-                                  
-                                  {remainingCount > 0 && (
-                                      <div className="px-1.5 text-[10px] font-medium text-slate-400 dark:text-slate-500 pl-2">
-                                          + {remainingCount} lớp khác
-                                      </div>
-                                  )}
-                              </div>
-                          </div>
-                      );
-                  })}
-              </div>
-          </div>
-      );
+      return days;
   };
 
-  // --- UI: TIMELINE / DAY RESOURCE VIEW ---
-  const renderTimelineView = () => {
-      const dayEvents = getEventsForDay(currentDate);
-      const hours = Array.from({length: 14}, (_, i) => i + 8); // 8:00 to 21:00
-
-      return (
-          <div className="flex-1 flex flex-col bg-white dark:bg-[#1a202c] border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm h-full">
-              <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                  <div className="flex items-center gap-4">
-                      <button onClick={handlePrev} className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded"><span className="material-symbols-outlined">chevron_left</span></button>
-                      <div className="text-center">
-                          <h3 className="text-lg font-bold text-slate-900 dark:text-white capitalize">
-                              {currentDate.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
-                          </h3>
-                          <p className="text-xs text-slate-500">{dayEvents.length} Ca học</p>
-                      </div>
-                      <button onClick={handleNext} className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded"><span className="material-symbols-outlined">chevron_right</span></button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                      {currentUser?.role !== 'student' && (
-                      <button onClick={() => handleAddEvent(currentDate)} className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-bold shadow-sm hover:bg-primary-dark transition-colors flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[16px]">add</span>
-                          Xếp lịch
-                      </button>
-                      )}
-                      <button onClick={() => setViewMode('month')} className="text-sm font-medium text-primary hover:underline">Quay lại tháng</button>
-                  </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-                  {/* Time Grid */}
-                  <div className="relative min-h-[800px]">
-                      {hours.map(h => (
-                          <div 
-                            key={h} 
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => handleDrop(e, currentDate, `${h.toString().padStart(2, '0')}:00`)}
-                            className="flex border-b border-slate-100 dark:border-slate-700/50 h-[60px] group/hour"
-                          >
-                              <div className="w-16 shrink-0 border-r border-slate-100 dark:border-slate-700/50 flex justify-center pt-2">
-                                  <span className="text-xs font-bold text-slate-400">{h}:00</span>
-                              </div>
-                              <div className="flex-1 relative group-hover/hour:bg-slate-50 dark:group-hover/hour:bg-white/5 transition-colors">
-                                  {/* Grid lines */}
-                                  <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-slate-50 dark:border-slate-800"></div>
-                              </div>
-                          </div>
-                      ))}
-
-                      {/* Events Overlay */}
-                      {dayEvents.map(evt => {
-                          const startHour = evt.start.getHours();
-                          const startMin = evt.start.getMinutes();
-                          const duration = (evt.end.getTime() - evt.start.getTime()) / (1000 * 60); // minutes
-                          
-                          // Calculate position
-                          const top = (startHour - 8) * 60 + 10; // 60px per hour, offset header
-                          const offsetTop = top + (startMin / 60) * 60;
-                          const height = (duration / 60) * 60;
-
-                          // Updated Timeline Colors (Pastel)
-                          let containerClass = 'bg-blue-50 border-l-4 border-blue-500 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200';
-                          
-                          if (evt.isLocked) {
-                              containerClass = 'bg-slate-50 border-l-4 border-slate-400 text-slate-500 cursor-not-allowed';
-                          } else if (evt.hasConflict) {
-                              containerClass = 'bg-white border-2 border-red-400 text-slate-800 dark:bg-slate-800 dark:text-slate-200 dark:border-red-500';
-                          } else if (evt.color === 'purple') {
-                              containerClass = 'bg-purple-50 border-l-4 border-purple-500 text-purple-800 dark:bg-purple-900/20 dark:text-purple-200';
-                          } else if (evt.status === 'upcoming') {
-                              containerClass = 'bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200';
-                          }
-
-                          return (
-                              <div 
-                                key={evt.id}
-                                draggable={!evt.isLocked}
-                                onDragStart={(e) => handleDragStart(e, evt)}
-                                onClick={() => setSelectedEvent(evt)}
-                                className={`absolute left-20 right-4 rounded-lg px-4 py-2 shadow-sm hover:brightness-95 transition-all flex justify-between items-center ${containerClass} ${evt.hasConflict ? 'z-20' : 'z-10'} ${draggedEvent?.id === evt.id ? 'opacity-50 border-dashed' : ''} ${!evt.isLocked ? 'cursor-pointer' : ''}`}
-                                style={{ top: `${offsetTop}px`, height: `${height}px` }}
-                              >
-                                  <div className="flex flex-col justify-center overflow-hidden pointer-events-none">
-                                      <div className="flex items-center gap-2">
-                                          <span className="font-bold text-sm truncate">{evt.title}</span>
-                                          {evt.hasConflict && <span className="material-symbols-outlined text-base text-red-500 animate-pulse">warning</span>}
-                                          {evt.isLocked && <span className="material-symbols-outlined text-sm text-slate-400">lock</span>}
-                                      </div>
-                                      <div className="text-xs opacity-80 flex items-center gap-2 truncate font-medium">
-                                          <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">person</span> {evt.teacher}</span>
-                                          <span>•</span>
-                                          <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">meeting_room</span> {evt.room}</span>
-                                      </div>
-                                  </div>
-                                  <div className="text-right text-xs font-bold opacity-90 shrink-0 pointer-events-none">
-                                      {formatTime(evt.start)} - {formatTime(evt.end)}
-                                  </div>
-                              </div>
-                          );
-                      })}
-                  </div>
-              </div>
-          </div>
-      );
+  const getEventsForDay = (date: Date) => {
+      return events.filter(e => e.start.toDateString() === date.toDateString())
+                   .sort((a,b) => a.start.getTime() - b.start.getTime());
   };
 
-  const uniqueRooms = Array.from(new Set(classes.map(c => c.location ? (c.location.includes('Phòng') ? 'P.' + c.location.split('Phòng')[1].trim().split(' ')[0] : 'Offline') : 'Online')));
   const teachers = Array.from(new Set(classes.map(c => c.teacher)));
+  const calendarDays = useMemo(() => getDaysArray(), [currentDate]);
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display relative">
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-[#f8fafc] dark:bg-[#101622] font-display relative">
       <Header title="Lịch học & Đào tạo" />
       
-      {/* PROCESSING OVERLAY */}
-      {isProcessing && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-              <div className="flex flex-col items-center bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700">
-                  <div className="relative">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-                      <span className="absolute inset-0 flex items-center justify-center material-symbols-outlined text-primary text-[20px]">calendar_today</span>
-                  </div>
-                  <h3 className="mt-4 text-lg font-bold text-slate-800 dark:text-white">Đang xử lý lịch học...</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Đang tịnh tiến và cập nhật chuỗi sự kiện</p>
-              </div>
-          </div>
-      )}
-
-      {/* TOAST MESSAGE */}
-      {toastMessage && (
-          <div className="absolute bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300 max-w-sm">
-              <div className="flex items-start gap-3 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl shadow-slate-900/30 border border-slate-700">
-                  <div className="p-1 bg-green-500/20 rounded-full text-green-400 shrink-0">
-                      <span className="material-symbols-outlined text-[20px]">check</span>
-                  </div>
-                  <div>
-                      <h4 className="text-sm font-bold">Cập nhật thành công</h4>
-                      <p className="text-xs text-slate-300 mt-0.5 leading-snug">{toastMessage}</p>
-                  </div>
-                  <button onClick={() => setToastMessage(null)} className="text-slate-500 hover:text-white transition-colors">
-                      <span className="material-symbols-outlined text-[18px]">close</span>
-                  </button>
-              </div>
-          </div>
-      )}
-
-      <main className="flex-1 overflow-hidden p-4 md:p-6 flex flex-col gap-4">
+      <main className="flex-1 overflow-y-auto p-6 md:p-8 scroll-smooth">
         
-        {/* Controls Toolbar */}
-        <div className="bg-white dark:bg-[#1a202c] p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col xl:flex-row xl:items-center justify-between gap-4 shrink-0">
+        <div className="flex flex-col bg-white dark:bg-[#1a202c] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden min-h-full">
             
-            {/* View Switcher & Date Nav */}
-            <div className="flex items-center gap-3">
-                <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-                    <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'month' ? 'bg-white dark:bg-slate-600 shadow-sm text-primary dark:text-white' : 'text-slate-500'}`}>Tháng</button>
-                    <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'day' ? 'bg-white dark:bg-slate-600 shadow-sm text-primary dark:text-white' : 'text-slate-500'}`}>Timeline</button>
-                </div>
-                <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
-                <h2 className="text-lg font-bold text-slate-800 dark:text-white capitalize min-w-[150px]">
-                    Tháng {currentDate.getMonth() + 1}, {currentDate.getFullYear()}
-                </h2>
-                <div className="flex gap-1">
-                    <button onClick={handlePrev} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500"><span className="material-symbols-outlined text-lg">chevron_left</span></button>
-                    <button onClick={handleToday} className="px-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300">Hôm nay</button>
-                    <button onClick={handleNext} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500"><span className="material-symbols-outlined text-lg">chevron_right</span></button>
-                </div>
-            </div>
-
-            {/* Smart Filters - Hidden for Student */}
-            {currentUser?.role !== 'student' && (
-            <div className="flex flex-wrap items-center gap-3">
-                {/* My Schedule Toggle */}
-                <button 
-                    onClick={() => setIsMySchedule(!isMySchedule)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${isMySchedule ? 'bg-primary text-white border-primary' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}
-                >
-                    <span className="material-symbols-outlined text-[16px]">{isMySchedule ? 'check_box' : 'check_box_outline_blank'}</span>
-                    Lịch của tôi
-                </button>
-
-                <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
-
-                <select 
-                    value={roomFilter}
-                    onChange={(e) => setRoomFilter(e.target.value)}
-                    className="h-8 pl-2 pr-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-primary focus:border-primary cursor-pointer"
-                >
-                    <option value="">Tất cả phòng</option>
-                    {uniqueRooms.map((r, i) => <option key={i} value={r}>{r}</option>)}
-                </select>
-
-                <select 
-                    value={teacherFilter}
-                    onChange={(e) => setTeacherFilter(e.target.value)}
-                    className="h-8 pl-2 pr-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-primary focus:border-primary cursor-pointer"
-                    disabled={isMySchedule}
-                >
-                    <option value="">Tất cả giáo viên</option>
-                    {teachers.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                
-                {/* Updated Legend */}
-                <div className="hidden xl:flex items-center gap-3 ml-2 pl-2 border-l border-slate-200 dark:border-slate-700">
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
-                        <span className="size-2.5 rounded-full bg-blue-100 border border-blue-300"></span>
-                        Đang học
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 shrink-0 z-20">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                    
+                    <div className="flex items-center gap-4">
+                        <div className="flex bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                            <button 
+                                onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}
+                                className="px-3 py-1.5 hover:bg-white dark:hover:bg-slate-700 border-r border-slate-200 dark:border-slate-700 transition-colors text-slate-600 dark:text-slate-300"
+                            >
+                                <span className="material-symbols-outlined text-lg">chevron_left</span>
+                            </button>
+                            <button 
+                                onClick={() => setCurrentDate(new Date())}
+                                className="px-4 py-1.5 hover:bg-white dark:hover:bg-slate-700 text-sm font-bold text-slate-800 dark:text-white transition-colors uppercase"
+                            >
+                                Hôm nay
+                            </button>
+                            <button 
+                                onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}
+                                className="px-3 py-1.5 hover:bg-white dark:hover:bg-slate-700 border-l border-slate-200 dark:border-slate-700 transition-colors text-slate-600 dark:text-slate-300"
+                            >
+                                <span className="material-symbols-outlined text-lg">chevron_right</span>
+                            </button>
+                        </div>
+                        <h3 className="text-xl font-extrabold text-slate-900 dark:text-white capitalize tracking-tight hidden sm:block">
+                            Tháng {currentDate.getMonth() + 1}, {currentDate.getFullYear()}
+                        </h3>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
-                        <span className="size-2.5 rounded-full bg-emerald-100 border border-emerald-300"></span>
-                        Sắp/Mới
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
-                        <span className="size-2.5 rounded-full bg-white border border-red-500"></span>
-                        Xung đột
+
+                    <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                        <select 
+                            value={teacherFilter}
+                            onChange={(e) => setTeacherFilter(e.target.value)}
+                            className="h-9 pl-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium focus:ring-primary cursor-pointer shadow-sm hover:border-slate-300"
+                        >
+                            <option value="Tất cả">GV: Tất cả</option>
+                            {teachers.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+
+                        <select 
+                            value={classTypeFilter}
+                            onChange={(e) => setClassTypeFilter(e.target.value)}
+                            className="h-9 pl-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium focus:ring-primary cursor-pointer shadow-sm hover:border-slate-300"
+                        >
+                            <option value="Tất cả">Lớp: Tất cả</option>
+                            <option value="Online">Online</option>
+                            <option value="Offline">Offline</option>
+                        </select>
                     </div>
                 </div>
             </div>
-            )}
-        </div>
 
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-hidden flex flex-col relative">
-            {viewMode === 'month' ? renderMonthView() : renderTimelineView()}
+            <div className="flex-1 flex flex-col">
+                <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 sticky top-0 z-10">
+                    {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'].map((d, i) => (
+                        <div key={d} className={`py-3 text-center text-xs font-bold uppercase tracking-widest ${i === 6 ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                            {d}
+                        </div>
+                    ))}
+                </div>
+
+                <div className="grid grid-cols-7 divide-x divide-slate-100 dark:divide-slate-800 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-[#1a202c]">
+                    {calendarDays.map((day, idx) => {
+                        const isCurrentMonth = day.type === 'current';
+                        const isToday = new Date().toDateString() === day.date.toDateString();
+                        const dayEvents = isCurrentMonth ? getEventsForDay(day.date) : [];
+                        const colIndex = idx % 7;
+
+                        const cellClass = `
+                            min-h-[150px] p-2 transition-all relative flex flex-col gap-2 border-b border-slate-100 dark:border-slate-800
+                            ${isCurrentMonth ? 'bg-white dark:bg-[#1a202c] hover:bg-slate-50/30 dark:hover:bg-slate-800/30' : 'bg-slate-50/50 dark:bg-slate-900/50 opacity-40'}
+                        `;
+
+                        return (
+                            <div key={idx} className={cellClass}>
+                                <div className="flex justify-between items-start">
+                                    <span className={`text-[13px] font-bold w-7 h-7 flex items-center justify-center rounded-full transition-shadow ${isToday ? 'bg-red-600 text-white shadow-md' : isCurrentMonth ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'}`}>
+                                        {day.date.getDate()}
+                                    </span>
+                                    {dayEvents.length > 0 && <span className="text-[10px] font-bold text-slate-400">{dayEvents.length} lớp</span>}
+                                </div>
+
+                                <div className="flex flex-col gap-1.5 flex-1 w-full">
+                                    <div className="hidden lg:flex flex-col gap-1.5 w-full">
+                                        {dayEvents.map(evt => {
+                                            const isOnline = evt.mode === 'online';
+                                            const cardBg = isOnline 
+                                                ? 'bg-orange-50 hover:bg-orange-100 border-orange-200 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 dark:border-orange-800' 
+                                                : 'bg-blue-50 hover:bg-blue-100 border-blue-200 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 dark:border-blue-800';
+                                            const textColor = isOnline ? 'text-orange-800 dark:text-orange-200' : 'text-blue-800 dark:text-blue-200';
+                                            const timeColor = isOnline ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600 dark:text-blue-400';
+
+                                            return (
+                                                <button 
+                                                    key={evt.id}
+                                                    onClick={(e) => {
+                                                        handleEventClick(e, evt, colIndex);
+                                                    }}
+                                                    className={`w-full text-left border ${cardBg} rounded px-2 py-1.5 transition-all shadow-sm hover:shadow group/card relative z-10`}
+                                                >
+                                                    <div className={`text-[11px] font-bold ${textColor} leading-tight whitespace-normal break-words`}>
+                                                        {evt.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} {evt.code}
+                                                    </div>
+                                                    {evt.isExtra && (
+                                                        <span className="absolute top-1 right-1 size-1.5 bg-purple-500 rounded-full ring-1 ring-white"></span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="lg:hidden flex flex-wrap content-start gap-1.5">
+                                        {dayEvents.map(evt => {
+                                            const isOnline = evt.mode === 'online';
+                                            const dotColor = isOnline ? 'bg-orange-500' : 'bg-blue-600';
+                                            return (
+                                                <button
+                                                    key={evt.id}
+                                                    onClick={(e) => {
+                                                        handleEventClick(e, evt, colIndex);
+                                                    }}
+                                                    className={`w-3.5 h-3.5 rounded-full ${dotColor} shrink-0 hover:scale-125 transition-transform shadow-sm ring-1 ring-white dark:ring-slate-800`}
+                                                    title={`${evt.title} (${evt.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})})`}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
         </div>
       </main>
 
-      {/* Event Details Popup */}
-      {selectedEvent && (
-          <ClassEventModal 
-            event={selectedEvent} 
-            onClose={() => setSelectedEvent(null)}
-            onUpdate={(updatedDate) => {
-                const result = updateScheduleChain(selectedEvent.classId, selectedEvent.index || 0, updatedDate.toISOString().split('T')[0] + 'T' + selectedEvent.start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
-                if(result?.success) {
-                    setToastMessage(result.message);
-                    setSelectedEvent(null);
-                }
+      {/* SMART POPOVER (PORTAL) */}
+      {popup.visible && popup.event && createPortal(
+          <div 
+            ref={popupRef}
+            className="fixed z-[9999] w-[320px] bg-white dark:bg-[#1e293b] rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-hidden"
+            style={{
+                left: popup.x,
+                top: popup.y,
             }}
-            onAddStudent={() => handleAddStudentToClass(selectedEvent.classId)}
-          />
-      )}
+          >
+              <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-start bg-slate-50 dark:bg-slate-800/50">
+                  <div>
+                      <div className="flex items-center gap-2 mb-1">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${popup.event.mode === 'online' ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                              {popup.event.mode}
+                          </span>
+                          {popup.event.index && <span className="text-xs font-bold text-slate-400">Buổi {popup.event.index}</span>}
+                      </div>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-base leading-tight">{popup.event.title}</h4>
+                  </div>
+                  <button 
+                      onClick={() => setPopup(prev => ({...prev, visible: false}))}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  >
+                      <span className="material-symbols-outlined text-lg">close</span>
+                  </button>
+              </div>
 
-      {/* Student Selector Modal for Quick Add */}
-      {showStudentSelector && targetClassId && (
-          <StudentSelectorModal 
-            onClose={() => { setShowStudentSelector(false); setTargetClassId(null); }}
-            onConfirm={handleConfirmAddStudents}
-            excludeClassId={targetClassId}
-            title="Thêm học viên vào buổi học"
-          />
+              <div className="p-4 flex flex-col gap-3 text-sm">
+                  <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
+                      <span className="material-symbols-outlined text-slate-400">schedule</span>
+                      <span className="font-medium">
+                          {popup.event.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - {popup.event.end.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                      </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
+                      <span className="material-symbols-outlined text-slate-400">person</span>
+                      <span className="font-medium">{popup.event.teacher}</span>
+                  </div>
+
+                  <div className="flex items-start gap-3 text-slate-600 dark:text-slate-300">
+                      <span className="material-symbols-outlined text-slate-400 mt-0.5">
+                          {popup.event.mode === 'online' ? 'link' : 'location_on'}
+                      </span>
+                      <div className="flex-1">
+                          {popup.event.mode === 'online' ? (
+                              <a href={popup.event.link || '#'} target="_blank" className="text-blue-600 hover:underline break-all font-medium flex items-center gap-1">
+                                  Mở Zoom/Meet <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+                              </a>
+                          ) : (
+                              <span className="font-medium">{popup.event.room}</span>
+                          )}
+                      </div>
+                  </div>
+
+                  <hr className="border-slate-50 dark:border-slate-700 my-1"/>
+                  
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                      <button 
+                          onClick={() => handleAttendanceRedirect(popup.event!)}
+                          className="col-span-2 flex items-center justify-center gap-2 py-2.5 bg-primary text-white text-sm font-bold rounded-xl shadow-md shadow-blue-500/20 hover:bg-primary-dark transition-all active:scale-[0.98]"
+                      >
+                          <span className="material-symbols-outlined text-[18px]">fact_check</span>
+                          Điểm danh
+                      </button>
+                      <button 
+                          onClick={() => handleShiftSchedule(popup.event!)}
+                          className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold transition-colors ${isAssistant ? 'opacity-50 cursor-not-allowed text-slate-400' : 'hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'}`}
+                      >
+                          <span className="material-symbols-outlined text-[18px]">edit_calendar</span>
+                          Lùi lịch
+                      </button>
+                      <button 
+                          onClick={() => handleCancelSession(popup.event!)}
+                          className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 text-xs font-bold transition-colors ${isAssistant ? 'opacity-50 cursor-not-allowed text-red-300' : 'hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400'}`}
+                      >
+                          <span className="material-symbols-outlined text-[18px]">event_busy</span>
+                          Hủy lịch
+                      </button>
+                  </div>
+              </div>
+          </div>,
+          document.body
       )}
     </div>
   );

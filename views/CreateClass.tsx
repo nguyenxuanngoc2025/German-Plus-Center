@@ -1,23 +1,37 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import StudentSelectorModal from '../components/StudentSelectorModal';
-import { Student, Lead } from '../types';
+import { Student, Lead, Staff } from '../types';
 import { useData } from '../context/DataContext';
+import Avatar from '../components/Avatar';
 
 const CreateClass: React.FC = () => {
   const navigate = useNavigate();
-  const { addClass, recalculateSchedule } = useData();
+  const { addClass, recalculateSchedule, staff } = useData();
 
   // Form States
+  const [batch, setBatch] = useState('61'); // New: Batch Number
   const [className, setClassName] = useState('');
-  const [level, setLevel] = useState('');
+  const [classCode, setClassCode] = useState(''); // New: Class Code
+  const [level, setLevel] = useState('A1');
   const [maxCapacity, setMaxCapacity] = useState('15');
   const [totalSessions, setTotalSessions] = useState('24');
   const [startDate, setStartDate] = useState('');
   const [calculatedEndDate, setCalculatedEndDate] = useState(''); // Read-only
-  const [teacher, setTeacher] = useState('');
+  
+  // Teacher Selection State
+  const [selectedTeacher, setSelectedTeacher] = useState<Staff | null>(null);
+  const [isTeacherDropdownOpen, setIsTeacherDropdownOpen] = useState(false);
+  const [teacherSearchTerm, setTeacherSearchTerm] = useState('');
+  const teacherDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Assistant Selection State
+  const [selectedAssistant, setSelectedAssistant] = useState<Staff | null>(null);
+  const [isAssistantDropdownOpen, setIsAssistantDropdownOpen] = useState(false);
+  const [assistantSearchTerm, setAssistantSearchTerm] = useState('');
+  const assistantDropdownRef = useRef<HTMLDivElement>(null);
   
   const [classType, setClassType] = useState<'offline' | 'online'>('offline');
   const [location, setLocation] = useState('102 Ngô Quyền, Hà Đông, Hà Nội');
@@ -30,6 +44,68 @@ const CreateClass: React.FC = () => {
   const [showStudentSelector, setShowStudentSelector] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<Student[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<Lead[]>([]);
+
+  // Filter Teachers from Staff
+  const availableTeachers = useMemo(() => {
+      return staff.filter(s => s.role === 'teacher' || s.role === 'manager').filter(s => 
+          s.name.toLowerCase().includes(teacherSearchTerm.toLowerCase()) || 
+          s.email.toLowerCase().includes(teacherSearchTerm.toLowerCase())
+      );
+  }, [staff, teacherSearchTerm]);
+
+  // Filter Assistants from Staff
+  const availableAssistants = useMemo(() => {
+      return staff.filter(s => s.role === 'assistant' || s.role === 'teacher').filter(s => 
+          s.name.toLowerCase().includes(assistantSearchTerm.toLowerCase()) || 
+          s.email.toLowerCase().includes(assistantSearchTerm.toLowerCase())
+      );
+  }, [staff, assistantSearchTerm]);
+
+  // Click Outside to Close Dropdown
+  useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+          if (teacherDropdownRef.current && !teacherDropdownRef.current.contains(event.target as Node)) {
+              setIsTeacherDropdownOpen(false);
+          }
+          if (assistantDropdownRef.current && !assistantDropdownRef.current.contains(event.target as Node)) {
+              setIsAssistantDropdownOpen(false);
+          }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // --- AUTO-GENERATE NAME & CODE (MINIMALIST) ---
+  useEffect(() => {
+      // Logic: 
+      // Name: K[Batch] [Online/Offline] [Level] ([ScheduleShort])
+      // Code: K[Batch].[Level][ON/OFF]
+      
+      const dayOrder = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+      const sortedDays = [...selectedDays].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+      
+      // Generate Short Schedule: T2,T4,T6 -> T246. T3,T5,CN -> T35CN
+      let scheduleDigits = '';
+      let hasCN = false;
+      sortedDays.forEach(d => {
+          if (d === 'CN') hasCN = true;
+          else scheduleDigits += d.replace('T', '');
+      });
+      let scheduleShort = 'T' + scheduleDigits;
+      if (hasCN) scheduleShort += 'CN';
+      if (sortedDays.length === 0) scheduleShort = 'TBD';
+
+      const modeStr = classType === 'online' ? 'Online' : 'Offline';
+      const modeCode = classType === 'online' ? 'ON' : 'OFF';
+      
+      const genName = `K${batch} ${modeStr} ${level} (${scheduleShort})`;
+      const genCode = `K${batch}.${level}${modeCode}`;
+
+      setClassName(genName);
+      setClassCode(genCode);
+
+  }, [batch, classType, level, selectedDays]);
+
 
   // Auto-calculate End Date
   useEffect(() => {
@@ -59,17 +135,25 @@ const CreateClass: React.FC = () => {
         return;
     }
 
+    if (!selectedTeacher) {
+        alert("Vui lòng chọn giáo viên phụ trách!");
+        return;
+    }
+
     const sessions = parseInt(totalSessions) || 24;
     const dayOrder = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
     const sortedDays = [...selectedDays].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
 
     addClass({
         name: className,
-        code: `K${Math.floor(Math.random() * 100)}`, // Auto gen code
+        code: classCode, // Use generated code
+        level: level,
         schedule: sortedDays.join(' / ') + " • 18:30",
         mode: classType,
-        teacher: teacher || "Chưa phân công",
-        teacherAvatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuCkYGLiTHbhXntle05Va5L5Sz3raJFux7O5sf9UkJt9Zbb_y2OEdJnwR7BpwKSDge0E0cpVz-RPKeixhGplF2fzPr_j431kzx9o-imd0lUTpm6mzz97qoDykVn38_-sqsQRyZaaBU3fgOf9Fhj6bvlGbkwDJI-ROTNHlIA7WsRhYCtjDzCPJc96RJO3daTtw40GivkoLhAnmf7WtiQxGreJpJuCKrfpLBENq8tR9uRdVKmLRHexypzCtt04nMXsbOofKW8s4SLrcWqL", 
+        teacher: selectedTeacher.name,
+        teacherAvatar: selectedTeacher.avatar,
+        assistant: selectedAssistant?.name,
+        assistantAvatar: selectedAssistant?.avatar,
         maxStudents: parseInt(maxCapacity),
         tuitionFee: parseInt(tuitionFee.replace(/\D/g, '')),
         link: classType === 'online' ? meetingLink : undefined,
@@ -132,14 +216,16 @@ const CreateClass: React.FC = () => {
                             Thông tin chung
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Tên lớp học <span className="text-red-500">*</span></label>
+                            
+                            {/* Auto-Gen Inputs */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Khóa số (Batch) <span className="text-red-500">*</span></label>
                                 <input 
                                     className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
-                                    placeholder="Ví dụ: Tiếng Đức A1 - K24" 
                                     type="text"
-                                    value={className}
-                                    onChange={(e) => setClassName(e.target.value)}
+                                    value={batch}
+                                    onChange={(e) => setBatch(e.target.value)}
+                                    placeholder="61"
                                 />
                             </div>
                             <div>
@@ -150,18 +236,32 @@ const CreateClass: React.FC = () => {
                                         value={level}
                                         onChange={(e) => setLevel(e.target.value)}
                                     >
-                                        <option disabled selected value="">Chọn cấp độ</option>
-                                        <option value="A1">A1 - Cơ bản</option>
-                                        <option value="A2">A2 - Sơ cấp</option>
-                                        <option value="B1">B1 - Trung cấp 1</option>
-                                        <option value="B2">B2 - Trung cấp 2</option>
-                                        <option value="C1">C1 - Cao cấp 1</option>
+                                        <option value="A1">A1</option>
+                                        <option value="A2">A2</option>
+                                        <option value="B1">B1</option>
+                                        <option value="B2">B2</option>
+                                        <option value="C1">C1</option>
                                     </select>
                                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
                                         <span className="material-symbols-outlined text-[20px]">arrow_drop_down</span>
                                     </div>
                                 </div>
                             </div>
+
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">
+                                    Tên lớp học (Tự động)
+                                    <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">Auto</span>
+                                </label>
+                                <input 
+                                    className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 focus:ring-0 px-3 py-2.5 text-sm font-bold" 
+                                    type="text"
+                                    value={className}
+                                    readOnly
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Mã lớp: <span className="font-mono font-bold">{classCode}</span></p>
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Sức chứa tối đa</label>
                                 <div className="relative">
@@ -176,6 +276,7 @@ const CreateClass: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
+                            
                             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-5 pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Tổng số buổi <span className="text-red-500">*</span></label>
@@ -342,25 +443,190 @@ const CreateClass: React.FC = () => {
 
                 {/* RIGHT COLUMN */}
                 <div className="flex flex-col gap-6">
-                    {/* 4. Teacher */}
-                    <div className="bg-white dark:bg-[#1a202c] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                    {/* 4. Teacher (Updated) */}
+                    <div className="bg-white dark:bg-[#1a202c] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 overflow-visible">
                         <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">person_search</span>
-                            Giáo viên phụ trách
+                            Giáo viên & Trợ giảng
                         </h3>
-                        <div className="relative">
-                            <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Tìm kiếm giáo viên</label>
-                            <div className="relative">
-                                <input 
-                                    className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 pl-10 text-sm" 
-                                    placeholder="Nhập tên giáo viên..." 
-                                    type="text"
-                                    value={teacher}
-                                    onChange={(e) => setTeacher(e.target.value)}
-                                />
-                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3 text-slate-500">
-                                    <span className="material-symbols-outlined text-[20px]">search</span>
+                        <div className="flex flex-col gap-4">
+                            {/* Main Teacher */}
+                            <div className="relative" ref={teacherDropdownRef}>
+                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Giáo viên phụ trách <span className="text-red-500">*</span></label>
+                                
+                                {/* Selector Trigger */}
+                                <div 
+                                    onClick={() => setIsTeacherDropdownOpen(!isTeacherDropdownOpen)}
+                                    className={`w-full rounded-lg border bg-white dark:bg-slate-800 flex items-center justify-between px-3 py-2.5 cursor-pointer hover:border-primary transition-colors ${
+                                        isTeacherDropdownOpen 
+                                        ? 'border-primary ring-1 ring-primary/20' 
+                                        : 'border-slate-200 dark:border-slate-700'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`size-8 rounded-full flex items-center justify-center ${selectedTeacher ? 'bg-transparent' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}>
+                                            {selectedTeacher ? (
+                                                <Avatar src={selectedTeacher.avatar} name={selectedTeacher.name} className="size-8 text-xs border border-slate-200" />
+                                            ) : (
+                                                <span className="material-symbols-outlined text-[18px]">person_search</span>
+                                            )}
+                                        </div>
+                                        {selectedTeacher ? (
+                                            <div className="flex flex-col leading-none">
+                                                <span className="text-sm font-bold text-slate-900 dark:text-white">{selectedTeacher.name}</span>
+                                                <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{selectedTeacher.email}</span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-sm text-slate-500">Chọn giáo viên chính...</span>
+                                        )}
+                                    </div>
+                                    <span className="material-symbols-outlined text-slate-400">expand_more</span>
                                 </div>
+
+                                {/* Dropdown Menu */}
+                                {isTeacherDropdownOpen && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                        {/* Search Input Sticky Top */}
+                                        <div className="p-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 sticky top-0">
+                                            <div className="relative">
+                                                <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+                                                <input 
+                                                    autoFocus
+                                                    type="text" 
+                                                    className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-primary focus:border-primary placeholder:text-slate-400"
+                                                    placeholder="Tìm kiếm giáo viên..."
+                                                    value={teacherSearchTerm}
+                                                    onChange={(e) => setTeacherSearchTerm(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        
+                                        {/* List */}
+                                        <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
+                                            {availableTeachers.map(teacher => (
+                                                <div 
+                                                    key={teacher.id}
+                                                    onClick={() => {
+                                                        setSelectedTeacher(teacher);
+                                                        setIsTeacherDropdownOpen(false);
+                                                        setTeacherSearchTerm('');
+                                                    }}
+                                                    className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${selectedTeacher?.id === teacher.id ? 'bg-primary/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                                >
+                                                    <Avatar src={teacher.avatar} name={teacher.name} className="size-9 text-xs border border-slate-200 dark:border-slate-600" />
+                                                    <div className="flex flex-col">
+                                                        <span className={`text-sm font-medium ${selectedTeacher?.id === teacher.id ? 'text-primary' : 'text-slate-900 dark:text-white'}`}>
+                                                            {teacher.name}
+                                                        </span>
+                                                        <span className="text-xs text-slate-500">{teacher.email}</span>
+                                                    </div>
+                                                    {selectedTeacher?.id === teacher.id && (
+                                                        <span className="material-symbols-outlined text-primary ml-auto text-[18px]">check</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {availableTeachers.length === 0 && (
+                                                <div className="text-center py-6 text-slate-500 text-sm">
+                                                    Không tìm thấy giáo viên.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Assistant Teacher (New) */}
+                            <div className="relative" ref={assistantDropdownRef}>
+                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Trợ giảng (Nếu có)</label>
+                                
+                                {/* Selector Trigger */}
+                                <div 
+                                    onClick={() => setIsAssistantDropdownOpen(!isAssistantDropdownOpen)}
+                                    className={`w-full rounded-lg border bg-white dark:bg-slate-800 flex items-center justify-between px-3 py-2.5 cursor-pointer hover:border-primary transition-colors ${
+                                        isAssistantDropdownOpen 
+                                        ? 'border-primary ring-1 ring-primary/20' 
+                                        : 'border-slate-200 dark:border-slate-700'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`size-8 rounded-full flex items-center justify-center ${selectedAssistant ? 'bg-transparent' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}>
+                                            {selectedAssistant ? (
+                                                <Avatar src={selectedAssistant.avatar} name={selectedAssistant.name} className="size-8 text-xs border border-slate-200" />
+                                            ) : (
+                                                <span className="material-symbols-outlined text-[18px]">group_add</span>
+                                            )}
+                                        </div>
+                                        {selectedAssistant ? (
+                                            <div className="flex flex-col leading-none">
+                                                <span className="text-sm font-bold text-slate-900 dark:text-white">{selectedAssistant.name}</span>
+                                                <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{selectedAssistant.email}</span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-sm text-slate-500">Chưa có dữ liệu trợ giảng...</span>
+                                        )}
+                                    </div>
+                                    {selectedAssistant ? (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setSelectedAssistant(null); }}
+                                            className="text-slate-400 hover:text-red-500 transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined">close</span>
+                                        </button>
+                                    ) : (
+                                        <span className="material-symbols-outlined text-slate-400">expand_more</span>
+                                    )}
+                                </div>
+
+                                {/* Dropdown Menu */}
+                                {isAssistantDropdownOpen && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                        {/* Search Input Sticky Top */}
+                                        <div className="p-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 sticky top-0">
+                                            <div className="relative">
+                                                <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+                                                <input 
+                                                    autoFocus
+                                                    type="text" 
+                                                    className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-primary focus:border-primary placeholder:text-slate-400"
+                                                    placeholder="Tìm kiếm trợ giảng..."
+                                                    value={assistantSearchTerm}
+                                                    onChange={(e) => setAssistantSearchTerm(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        
+                                        {/* List */}
+                                        <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
+                                            {availableAssistants.map(staff => (
+                                                <div 
+                                                    key={staff.id}
+                                                    onClick={() => {
+                                                        setSelectedAssistant(staff);
+                                                        setIsAssistantDropdownOpen(false);
+                                                        setAssistantSearchTerm('');
+                                                    }}
+                                                    className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${selectedAssistant?.id === staff.id ? 'bg-primary/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                                >
+                                                    <Avatar src={staff.avatar} name={staff.name} className="size-9 text-xs border border-slate-200 dark:border-slate-600" />
+                                                    <div className="flex flex-col">
+                                                        <span className={`text-sm font-medium ${selectedAssistant?.id === staff.id ? 'text-primary' : 'text-slate-900 dark:text-white'}`}>
+                                                            {staff.name}
+                                                        </span>
+                                                        <span className="text-xs text-slate-500">{staff.email}</span>
+                                                    </div>
+                                                    {selectedAssistant?.id === staff.id && (
+                                                        <span className="material-symbols-outlined text-primary ml-auto text-[18px]">check</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {availableAssistants.length === 0 && (
+                                                <div className="text-center py-6 text-slate-500 text-sm">
+                                                    Không tìm thấy nhân sự phù hợp.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
