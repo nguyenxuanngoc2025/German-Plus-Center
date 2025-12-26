@@ -1,8 +1,8 @@
 
 import React, { useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
-import SimulationBar from './components/SimulationBar'; // Import Simulation Bar
+import SimulationBar from './components/SimulationBar';
 import LeadsKanban from './views/LeadsKanban';
 import FinanceDashboard from './views/FinanceDashboard';
 import ExpenseList from './views/ExpenseList';
@@ -23,7 +23,6 @@ import Documents from './views/Documents';
 import Calendar from './views/Calendar';
 import DebtManagement from './views/DebtManagement'; 
 import SystemDiagnostics from './views/SystemDiagnostics';
-// Reports import removed
 import { DataProvider, useData, PermissionKey } from './context/DataContext';
 
 const RoleRoute: React.FC<{ permission: PermissionKey }> = ({ permission }) => {
@@ -37,6 +36,29 @@ const RoleRoute: React.FC<{ permission: PermissionKey }> = ({ permission }) => {
 
 const MainLayout: React.FC = () => {
   const { settings } = useData();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // --- ROUTE PERSISTENCE LOGIC ---
+  
+  // 1. Save Current Path
+  useEffect(() => {
+      if (location.pathname !== '/login') {
+          localStorage.setItem('gp_last_path', location.pathname + location.search);
+      }
+  }, [location]);
+
+  // 2. Restore Path on Load (if currently at root)
+  useEffect(() => {
+      const lastPath = localStorage.getItem('gp_last_path');
+      // If we are at root ('/') and there is a saved path that isn't root, redirect.
+      // This handles the "F5 on Dashboard redirects to last page" requirement if desired,
+      // or simply ensures deep links work if HashRouter reset them (though HashRouter usually handles this itself).
+      // The main benefit here is redirecting to the last worked-on page if the user just opens the base URL.
+      if (location.pathname === '/' && lastPath && lastPath !== '/') {
+          navigate(lastPath, { replace: true });
+      }
+  }, []); // Run once on mount
 
   useEffect(() => {
       document.title = settings.systemName;
@@ -85,8 +107,6 @@ const MainLayout: React.FC = () => {
                 <Route path="/staff" element={<StaffList />} />
                 <Route path="/staff/create" element={<CreateStaff />} />
             </Route>
-
-            {/* Reports Route Removed - Merged into Dashboard */}
 
             {/* Common Routes */}
             <Route path="/calendar" element={<Calendar />} />

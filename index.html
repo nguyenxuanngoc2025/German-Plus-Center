@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <!-- Material Symbols -->
@@ -25,73 +25,94 @@
         darkMode: "class",
         theme: {
           extend: {
-            // SCALING SYSTEM: Refined for 14.5px root (SaaS Gold Standard)
-            // Using rem units ensures everything scales with the HTML font size
-            fontSize: {
-                'xs': ['0.8rem', { lineHeight: '1.1rem' }],    // ~11.6px
-                'sm': ['0.92rem', { lineHeight: '1.35rem' }],   // ~13.3px
-                'base': ['1rem', { lineHeight: '1.5rem' }],     // 14.5px (Standard Body)
-                'lg': ['1.15rem', { lineHeight: '1.75rem' }],   // ~16.7px
-                'xl': ['1.35rem', { lineHeight: '1.85rem' }],   // ~19.5px
-                '2xl': ['1.6rem', { lineHeight: '2.1rem' }],    // ~23px
-                '3xl': ['2rem', { lineHeight: '2.5rem' }],      // ~29px
-                '4xl': ['2.5rem', { lineHeight: '1' }],         // ~36px
-            },
-            spacing: {
-                '18': '4.5rem', // 72px (at 16px) -> 65px (at 14.5px)
-                '22': '5.5rem', // 88px (at 16px) -> 80px (at 14.5px)
+            fontFamily: {
+              // Apple System Font Stack
+              display: [
+                "-apple-system", 
+                "BlinkMacSystemFont", 
+                "San Francisco", 
+                "Segoe UI", 
+                "Roboto", 
+                "Helvetica Neue", 
+                "sans-serif"
+              ],
+              body: [
+                "-apple-system", 
+                "BlinkMacSystemFont", 
+                "San Francisco", 
+                "Segoe UI", 
+                "Roboto", 
+                "Helvetica Neue", 
+                "sans-serif"
+              ],
             },
             colors: {
-              primary: "#1A365D", // Navy Blue - Main Brand
-              "primary-dark": "#2A4365", // Hover
-              "primary-active": "#102A4C", // Active
-              secondary: "#F97316", // Orange - Accent Actions
-              "background-light": "#F8FAFC", // Slate 50
-              "background-dark": "#0f172a", // Dark Mode BG
+              primary: "#0071e3", // Apple Blue
+              "primary-dark": "#005bb5",
+              "primary-active": "#004494",
+              secondary: "#f56300", // Apple Orange-ish
+              "background-light": "#F5F5F7", // Apple Light Gray Background
+              "background-dark": "#000000", // Apple Dark
               surface: "#ffffff",
+              // Apple Typography Colors
+              "apple-black": "#1D1D1F",
+              "apple-gray": "#86868B",
             },
-            fontFamily: {
-              display: ["Lexend", "sans-serif"],
-              body: ["Inter", "sans-serif"],
+            fontSize: {
+                'xs': ['12px', { lineHeight: '16px' }],
+                'sm': ['13px', { lineHeight: '18px' }], // Standardized for Buttons/Tags
+                'base': ['15px', { lineHeight: '1.5' }], // Standardized for Body
+                'lg': ['17px', { lineHeight: '1.47' }],
+                'xl': ['19px', { lineHeight: '1.45' }],
+                'title': ['22px', { lineHeight: '1.2', letterSpacing: '-0.01em', fontWeight: '700' }], // Apple Page Title
             },
             boxShadow: {
-              'subtle': '0 2px 5px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)', 
-              'card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
+              'subtle': '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.02)', 
+              'card': '0 4px 12px rgba(0, 0, 0, 0.08)',
             }
           },
         },
       };
     </script>
     <style>
-      /* GLOBAL SCALE ADJUSTMENT */
+      /* RESPONSIVE TYPOGRAPHY LOGIC */
       html {
-        font-size: 14.5px; /* 10% reduction from standard 16px */
+        font-size: 15px; /* Desktop Standard */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      
+      @media (max-width: 1024px) {
+        html {
+          font-size: 14px; /* Scaled down for smaller screens */
+        }
       }
       
       body {
-        font-family: 'Lexend', sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        color: #1D1D1F; /* Apple Black */
+        background-color: #F5F5F7;
       }
+
+      /* Dark Mode Overrides */
+      .dark body {
+        color: #F5F5F7;
+        background-color: #000000;
+      }
+
       .material-symbols-outlined {
         font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        /* Ensure icons scale with text */
         font-size: 1.25em; 
         line-height: 1;
       }
-      .material-symbols-outlined.fill {
-        font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-      }
-      /* Hide scrollbar for Chrome, Safari and Opera */
-      .no-scrollbar::-webkit-scrollbar {
-          display: none;
-      }
-      /* Hide scrollbar for IE, Edge and Firefox */
-      .no-scrollbar {
-          -ms-overflow-style: none;  /* IE and Edge */
-          scrollbar-width: none;  /* Firefox */
-      }
       
-      /* Base inputs scaling */
+      /* Utilities */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      /* Input Standardization */
       input, select, textarea, button {
+          font-family: inherit;
           font-size: 1rem; 
       }
     </style>
@@ -100,15 +121,16 @@
   "imports": {
     "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react-router-dom": "https://esm.sh/react-router-dom@^7.11.0",
     "recharts": "https://esm.sh/recharts@^3.6.0",
-    "react-dom": "https://esm.sh/react-dom@^19.2.3"
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.11.0"
   }
 }
 </script>
 </head>
-  <body class="bg-background-light text-slate-700 h-screen overflow-hidden antialiased selection:bg-orange-100 selection:text-orange-900 text-base">
+  <body class="bg-background-light text-apple-black h-screen overflow-hidden antialiased selection:bg-primary/20 selection:text-primary">
     <div id="root"></div>
   </body>
 </html>
+    

@@ -170,7 +170,6 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 // --- HELPER: PERSISTENT STATE HOOK ---
-// This hook syncs state with LocalStorage to prevent data loss on refresh
 function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [state, setState] = useState<T>(() => {
     try {
@@ -193,7 +192,6 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
   return [state, setState];
 }
 
-// ... (Other Helpers remain UNCHANGED)
 const generateMockNotifications = (): Notification[] => {
     const now = new Date();
     return [
@@ -218,43 +216,67 @@ const generateMockNotifications = (): Notification[] => {
     ];
 };
 
+// CRITICAL FIX: Robust Schedule Calculation to prevent infinite loops (White Screen Fix)
 const recalculateSchedule = (startDateStr: string, totalSessions: number, daysStr: string, offDays: string[] = []): string => {
+    // 1. Basic Validation
     if (!startDateStr || totalSessions <= 0) return '';
-    const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
-    const targetDays = daysStr.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined);
-    if (targetDays.length === 0) return '';
+    const start = new Date(startDateStr);
+    if (isNaN(start.getTime())) return '';
 
-    let sessionsFound = 0;
-    const iterator = new Date(startDateStr);
-    let lastDate = new Date(startDateStr);
-    let safetyCounter = 0;
+    // 2. Parse Days String safely
+    if (!daysStr || typeof daysStr !== 'string' || daysStr.trim() === '') return startDateStr;
+    
+    try {
+        const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
+        // Safe mapping to integers
+        const targetDays = daysStr.split('/').map(d => {
+             const key = d.trim();
+             return dayMap.hasOwnProperty(key) ? dayMap[key] : -1;
+        }).filter(d => d !== -1);
+        
+        // If no valid days found, return start date to prevent loop
+        if (targetDays.length === 0) return startDateStr;
 
-    while (sessionsFound < totalSessions && safetyCounter < 1000) {
-        const currentDay = iterator.getDay();
-        const dateString = iterator.toISOString().split('T')[0];
-        if (targetDays.includes(currentDay)) {
-            if (offDays.includes(dateString)) {
-                // SKIP
-            } else {
-                sessionsFound++;
-                lastDate = new Date(iterator); 
+        let sessionsFound = 0;
+        let iterator = new Date(start);
+        let lastDate = new Date(start);
+        let safetyCounter = 0;
+        const MAX_LOOPS = 5000; // Hard limit to prevent browser freeze
+
+        // Loop until enough sessions found or safety limit reached
+        while (sessionsFound < totalSessions && safetyCounter < MAX_LOOPS) {
+            const currentDay = iterator.getDay();
+            const dateString = iterator.toISOString().split('T')[0];
+            
+            if (targetDays.includes(currentDay)) {
+                // Check if this date is in the holidays list
+                if (!offDays.includes(dateString)) {
+                    sessionsFound++;
+                    lastDate = new Date(iterator);
+                }
             }
+            
+            // Only advance if we haven't found all sessions yet
+            if (sessionsFound < totalSessions) {
+                iterator.setDate(iterator.getDate() + 1);
+            }
+            safetyCounter++;
         }
-        iterator.setDate(iterator.getDate() + 1);
-        safetyCounter++;
+        
+        return lastDate.toISOString().split('T')[0];
+    } catch (error) {
+        console.error("Error recalculating schedule:", error);
+        return startDateStr;
     }
-    return lastDate.toISOString().split('T')[0];
 };
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // USE PERSISTENT STATE FOR ALL CORE DATA
   const [leads, setLeads] = usePersistentState<Lead[]>('gp_leads', MOCK_LEADS);
   const [students, setStudents] = usePersistentState<Student[]>('gp_students', MOCK_STUDENTS);
   const [classes, setClasses] = usePersistentState<ClassItem[]>('gp_classes', MOCK_CLASSES);
   const [tuition, setTuition] = usePersistentState<Tuition[]>('gp_tuition', MOCK_TUITION);
   const [finance, setFinance] = usePersistentState<FinanceRecord[]>('gp_finance', MOCK_FINANCE);
   
-  // Less critical data can stay in memory or use persistent if needed
   const [staff, setStaff] = usePersistentState<Staff[]>('gp_staff', MOCK_STAFF);
   const [documents, setDocuments] = usePersistentState<Document[]>('gp_documents', MOCK_DOCUMENTS);
   
@@ -262,7 +284,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>(generateMockNotifications()); 
   
-  // Settings & User
   const [settings, setSettingsState] = useState<SystemSettings>(() => {
       const saved = localStorage.getItem('german_plus_settings');
       if (saved) { try { return JSON.parse(saved); } catch(e){} }
@@ -287,9 +308,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => localStorage.getItem('german_plus_auth') === 'true');
   const [originalRole, setOriginalRole] = useState<UserRole | null>(null);
 
-  // --- ACTIONS ---
-
-  // Helper Actions defined first
   const addNotification = (title: string, message: string, type: 'debt' | 'schedule' | 'success' | 'info', relatedId?: string) => {
       const newNotif: Notification = {
           id: `notif-${Date.now()}`,
@@ -311,11 +329,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const cls = classes.find(c => c.id === classId);
       setStudents(prev => prev.map(s => {
           if (s.id === studentId) {
-              return { ...s, classId: classId, currentClass: cls?.name, status: 'active' };
+              // Reset status for new enrollment
+              return { 
+                  ...s, 
+                  classId: classId, 
+                  currentClass: cls?.name, 
+                  status: 'active',
+                  scores: [], // Clear scores for new class
+                  attendanceHistory: [], // Clear attendance for new class
+                  averageScore: undefined
+              };
           }
           return s;
       }));
-      // Also update class count
       setClasses(prev => prev.map(c => c.id === classId ? { ...c, students: c.students + 1 } : c));
       return { success: true, message: `Đã thêm học viên vào lớp ${cls?.name}` };
   };
@@ -324,9 +350,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const lead = leads.find(l => l.id === leadId);
       if (!lead) return { success: false, message: "Lead not found" };
 
-      // 1. Create Student
       const newStudentId = `HV${new Date().getFullYear()}${Math.floor(Math.random()*10000)}`;
       const cls = classes.find(c => c.id === classId);
+      
       const newStudent: Student = {
           id: newStudentId,
           leadId: lead.id,
@@ -344,15 +370,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           paid: paymentPlan?.deposit || 0,
           balance: tuitionFee - (paymentPlan?.deposit || 0),
           cachedBalance: tuitionFee - (paymentPlan?.deposit || 0),
-          attendanceHistory: []
+          attendanceHistory: [], 
+          scores: [],
+          averageScore: 0
       };
 
       setStudents(prev => [...prev, newStudent]);
-      
-      // 2. Update Lead Status
       setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: 'closed' } : l));
 
-      // 3. Create Tuition Record
       const invoiceId = `INV-${newStudentId}-${Date.now()}`;
       const newTuition: Tuition = {
           id: invoiceId,
@@ -372,7 +397,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
       setTuition(prev => [...prev, newTuition]);
 
-      // 4. Record Initial Payment (Income)
       if (paymentPlan && paymentPlan.deposit > 0) {
           addFinanceRecord({
               type: 'income',
@@ -384,7 +408,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
       }
 
-      // 5. Update Class Count
       setClasses(prev => prev.map(c => c.id === classId ? { ...c, students: c.students + 1 } : c));
 
       return { success: true, message: "Chuyển đổi thành công!", studentId: newStudentId };
@@ -395,14 +418,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const newClass: ClassItem = {
           id: newId,
           ...classData,
-          students: 0, // Will be updated by effects or explicit enroll
+          students: 0, 
           progress: 0,
           status: 'upcoming'
       };
       
       setClasses(prev => [newClass, ...prev]);
 
-      // Process Initial Students
       initialStudentIds.forEach(sid => enrollStudent(sid, newId));
       initialLeadIds.forEach(lid => convertLeadToStudent(lid, newId, classData.tuitionFee));
   };
@@ -411,18 +433,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setStudents(prev => prev.map(student => {
           if (student.classId === classId) {
               const status = attendanceData[student.id];
-              // Only update if a status is provided for this student
               if (status) {
                   const existingHistory = student.attendanceHistory || [];
                   const existingIndex = existingHistory.findIndex(r => r.date === date);
                   
                   let newHistory;
                   if (existingIndex >= 0) {
-                      // Update existing
                       newHistory = [...existingHistory];
                       newHistory[existingIndex] = { date, status };
                   } else {
-                      // Add new
                       newHistory = [...existingHistory, { date, status }];
                   }
                   return { ...student, attendanceHistory: newHistory };
@@ -439,25 +458,28 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const [daysPart] = cls.schedule.split('•');
       const revDayMap = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
       const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
-      const targetDays = daysPart.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined);
+      const targetDays = daysPart 
+        ? daysPart.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined) 
+        : [];
+        
       const offDays = cls.offDays || [];
       const extraSessions = cls.extraSessions || [];
       const today = new Date();
-      today.setHours(0,0,0,0); // Start of today
+      today.setHours(0,0,0,0);
       const maxSessions = cls.totalSessions || 50; 
       
-      // Calculate Dates
       let candidates: { date: string; isExtra: boolean; note?: string }[] = [];
       extraSessions.forEach(e => candidates.push({ date: e.date.split('T')[0], isExtra: true, note: e.note }));
 
       const iterator = new Date(cls.startDate);
+      if (isNaN(iterator.getTime())) return [];
+
       let safetyCounter = 0;
       while (candidates.length < maxSessions && safetyCounter < 1000) {
           const dateStr = iterator.toISOString().split('T')[0];
           const currentDay = iterator.getDay();
           
           if (targetDays.includes(currentDay) && !offDays.includes(dateStr)) {
-              // Avoid duplicates if extra session matches logic
               if (!candidates.some(c => c.date === dateStr)) {
                   candidates.push({ date: dateStr, isExtra: false });
               }
@@ -466,13 +488,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           safetyCounter++;
       }
       
-      // Sort Chronologically
       candidates.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      
-      // Trim to total sessions
       const finalCandidates = candidates.slice(0, maxSessions);
 
-      // Get students in this class to check if attendance was taken
       const classStudents = students.filter(s => s.classId === cls.id);
       const activeStudentCount = classStudents.length;
 
@@ -480,22 +498,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const d = new Date(c.date);
           const isLocked = d < today; 
           
-          // Check if attendance was taken for this specific date
-          // Count how many students have a record for this date
           const attendeesCount = classStudents.filter(s => 
               s.attendanceHistory?.some(r => r.date === c.date)
           ).length;
 
-          // Logic: 
-          // - Finished if all students have a record.
-          // - Incomplete if only some have a record (AND it's past date).
           const isFullyFinished = activeStudentCount > 0 && attendeesCount === activeStudentCount;
           const isPartiallyFinished = attendeesCount > 0 && attendeesCount < activeStudentCount;
 
           let status = 'upcoming';
           if (isFullyFinished) status = 'finished';
-          else if (isLocked && isPartiallyFinished) status = 'incomplete'; // Yellow/Warning state
-          else if (isLocked && attendeesCount === 0) status = 'missed';    // Red/Missed state
+          else if (isLocked && isPartiallyFinished) status = 'incomplete'; 
+          else if (isLocked && attendeesCount === 0) status = 'missed';    
           
           return {
               id: `${cls.id}-${c.date}-${idx}`,
@@ -579,7 +592,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addFinanceRecord({ type: 'income', amount, category: 'Tuition', description: `Thu phí ${t.description} - ${t.id}`, date: new Date().toISOString().split('T')[0] });
       return { success: true, message: "Paid" }; 
   };
-  const recordStudentPayment = (studentId: string, amount: number, method: string, note?: string) => { return { success: true, message: "Paid" }; }; // Simplified for now
+  const recordStudentPayment = (studentId: string, amount: number, method: string, note?: string) => { return { success: true, message: "Paid" }; }; 
   const deleteTuition = (tuitionId: string) => { setTuition(prev => prev.filter(t => t.id !== tuitionId)); };
   const updateTuition = (id: string, updates: Partial<Tuition>) => { setTuition(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t)); };
   
@@ -616,11 +629,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       const revenue = filteredFinance.filter(f => f.type === 'income').reduce((sum, f) => sum + f.amount, 0);
       const expense = filteredFinance.filter(f => f.type === 'expense').reduce((sum, f) => sum + f.amount, 0);
-      const debt = tuition.reduce((sum, t) => sum + t.remainingAmount, 0); // Total debt always, or filtered if specific requirement
+      const debt = tuition.reduce((sum, t) => sum + t.remainingAmount, 0); 
       return { revenue, expense, debt, profit: revenue - expense };
   };
 
-  // Reset Data Function
   const resetSystemData = () => {
       if (confirm('CẢNH BÁO: Hành động này sẽ xóa toàn bộ dữ liệu bạn đã nhập và đưa hệ thống về trạng thái ban đầu (Mock Data). Bạn có chắc chắn không?')) {
           localStorage.removeItem('gp_leads');
@@ -630,6 +642,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           localStorage.removeItem('gp_finance');
           localStorage.removeItem('gp_staff');
           localStorage.removeItem('gp_documents');
+          localStorage.removeItem('draft_cc_form');
           window.location.reload();
       }
   };

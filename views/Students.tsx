@@ -65,9 +65,6 @@ const Students: React.FC = () => {
         
         const matchesStatus = filters.status === 'all' || student.status === filters.status;
         const matchesClass = filters.classId === 'all' || student.classId === filters.classId;
-
-        // Note: Students might not have `learningMode` directly, but it's on their class.
-        // For simplicity, we filter by what we have.
         
         return matchesSearch && matchesStatus && matchesClass;
       });
@@ -130,18 +127,55 @@ const Students: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark text-base">
-      <Header title="Quản lý Học viên" />
+      <div className="md:hidden">
+          <Header title="Quản lý Học viên" />
+      </div>
       
       <AdvancedFilterBar 
+        title="Quản lý Học viên"
+        subtitle="Hồ sơ, học phí & trạng thái học tập"
         onFilterChange={setFilters}
         showClass={true}
         showStatus={true}
-        showDate={false} // Students list usually doesn't filter by date unless enrollment date, which is niche.
+        showDate={false} 
         statusOptions={[
             { label: 'Đang học', value: 'active' },
             { label: 'Bảo lưu', value: 'suspended' },
             { label: 'Đã nghỉ', value: 'inactive' }
         ]}
+        children={
+            <div className="relative w-full max-w-[200px] lg:max-w-[300px]">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+                <input 
+                    type="text" 
+                    placeholder="Tìm tên, mã học viên..." 
+                    className="w-full h-9 pl-9 pr-4 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 text-[#111318] dark:text-white"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+            </div>
+        }
+        actions={
+            <>
+                <ColumnSelector 
+                    tableId="students_table"
+                    columns={columnOptions}
+                    onChange={setVisibleColumns}
+                />
+                {hasPermission('export_data') && (
+                    <button className="flex items-center justify-center gap-2 px-3 h-9 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#111318] dark:text-white text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap">
+                        <span className="material-symbols-outlined text-[18px]">download</span>
+                        Xuất Excel
+                    </button>
+                )}
+                {hasPermission('edit_students') && (
+                    <button className="flex items-center justify-center gap-2 px-3 h-9 rounded-lg bg-secondary hover:bg-orange-600 text-white text-xs font-bold shadow-sm transition-colors whitespace-nowrap">
+                        <span className="material-symbols-outlined text-[18px]">add</span>
+                        Thêm mới
+                    </button>
+                )}
+            </>
+        }
       />
 
       <div className="flex-1 overflow-y-auto p-6 md:p-8">
@@ -170,42 +204,6 @@ const Students: React.FC = () => {
                     color="red"
                     tooltip="Số lượng học viên còn dư nợ học phí chưa thanh toán hết."
                 />
-            </div>
-
-            {/* Toolbar */}
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white dark:bg-[#1a202c] p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-                 <div className="flex items-center gap-4 w-full md:w-auto flex-1">
-                    <div className="relative w-full md:w-80">
-                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[22px]">search</span>
-                        <input 
-                            type="text" 
-                            placeholder="Tìm tên, mã học viên..." 
-                            className="w-full h-11 pl-11 pr-4 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-base focus:outline-none focus:ring-2 focus:ring-primary/50 text-[#111318] dark:text-white"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                 </div>
-
-                 <div className="flex gap-3 w-full md:w-auto">
-                    <ColumnSelector 
-                        tableId="students_table"
-                        columns={columnOptions}
-                        onChange={setVisibleColumns}
-                    />
-                    {hasPermission('export_data') && (
-                        <button className="flex items-center justify-center gap-2 px-5 h-11 rounded-lg border border-[#e5e7eb] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#111318] dark:text-white text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                            <span className="material-symbols-outlined text-[20px]">download</span>
-                            Xuất Excel
-                        </button>
-                    )}
-                    {hasPermission('edit_students') && (
-                        <button className="flex items-center justify-center gap-2 px-5 h-11 rounded-lg bg-secondary hover:bg-orange-600 text-white text-sm font-bold shadow-sm transition-colors">
-                            <span className="material-symbols-outlined text-[20px]">add</span>
-                            Thêm mới
-                        </button>
-                    )}
-                 </div>
             </div>
 
             {/* Table */}
@@ -249,7 +247,7 @@ const Students: React.FC = () => {
                                                     src={student.avatar} 
                                                     name={student.name} 
                                                     className="size-12 border border-slate-200 dark:border-slate-700 shadow-sm text-sm"
-                                                    detail={student} // Pass full student object for Mini Profile
+                                                    detail={student} 
                                                 />
                                                 <div>
                                                     <p className="text-base font-bold text-[#111318] dark:text-white">{student.name}</p>
@@ -344,7 +342,7 @@ const Students: React.FC = () => {
         </div>
       </div>
       
-      {/* Detail Modal */}
+      {/* Modals remain the same */}
       {selectedStudent && (
         <StudentDetailsModal 
             data={selectedStudent} 
@@ -354,7 +352,6 @@ const Students: React.FC = () => {
         />
       )}
 
-      {/* Quick Payment Modal */}
       {paymentStudent && hasPermission('view_finance') && (
           <QuickPaymentModal 
             student={paymentStudent}

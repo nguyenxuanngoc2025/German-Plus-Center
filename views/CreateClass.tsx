@@ -6,44 +6,61 @@ import StudentSelectorModal from '../components/StudentSelectorModal';
 import { Student, Lead, Staff } from '../types';
 import { useData } from '../context/DataContext';
 import Avatar from '../components/Avatar';
+import { useFormPersistence } from '../hooks/useFormPersistence';
 
 const CreateClass: React.FC = () => {
   const navigate = useNavigate();
   const { addClass, recalculateSchedule, staff } = useData();
 
-  // Form States
-  const [batch, setBatch] = useState('61'); // New: Batch Number
-  const [className, setClassName] = useState('');
-  const [classCode, setClassCode] = useState(''); // New: Class Code
-  const [level, setLevel] = useState('A1');
-  const [maxCapacity, setMaxCapacity] = useState('15');
-  const [totalSessions, setTotalSessions] = useState('24');
-  const [startDate, setStartDate] = useState('');
+  // --- PERSISTENT FORM STATE ---
+  const [formData, setFormData, clearDraft] = useFormPersistence('draft_cc_form', {
+      batch: '61',
+      className: '',
+      classCode: '',
+      level: 'A1',
+      maxCapacity: '15',
+      totalSessions: '24',
+      startDate: '',
+      classType: 'offline',
+      location: '102 Ngô Quyền, Hà Đông, Hà Nội',
+      meetingLink: '',
+      selectedDays: ['T2', 'T4', 'T6'],
+      tuitionFee: '5.000.000',
+      selectedTeacherId: '',
+      selectedAssistantId: ''
+  });
+
   const [calculatedEndDate, setCalculatedEndDate] = useState(''); // Read-only
-  
-  // Teacher Selection State
+
+  // --- SELECTION STATES ---
+  // We re-hydrate selection objects based on IDs from formData or manual selection
   const [selectedTeacher, setSelectedTeacher] = useState<Staff | null>(null);
+  const [selectedAssistant, setSelectedAssistant] = useState<Staff | null>(null);
+  const [selectedStudents, setSelectedStudents] = useState<Student[]>([]);
+  const [selectedLeads, setSelectedLeads] = useState<Lead[]>([]);
+
+  // Hydrate Staff from IDs on mount/update if they exist in persisted data
+  useEffect(() => {
+      if (formData.selectedTeacherId && !selectedTeacher) {
+          const t = staff.find(s => s.id === formData.selectedTeacherId);
+          if (t) setSelectedTeacher(t);
+      }
+      if (formData.selectedAssistantId && !selectedAssistant) {
+          const a = staff.find(s => s.id === formData.selectedAssistantId);
+          if (a) setSelectedAssistant(a);
+      }
+  }, [formData.selectedTeacherId, formData.selectedAssistantId, staff]);
+
+  // Dropdown States
   const [isTeacherDropdownOpen, setIsTeacherDropdownOpen] = useState(false);
   const [teacherSearchTerm, setTeacherSearchTerm] = useState('');
   const teacherDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Assistant Selection State
-  const [selectedAssistant, setSelectedAssistant] = useState<Staff | null>(null);
   const [isAssistantDropdownOpen, setIsAssistantDropdownOpen] = useState(false);
   const [assistantSearchTerm, setAssistantSearchTerm] = useState('');
   const assistantDropdownRef = useRef<HTMLDivElement>(null);
   
-  const [classType, setClassType] = useState<'offline' | 'online'>('offline');
-  const [location, setLocation] = useState('102 Ngô Quyền, Hà Đông, Hà Nội');
-  const [meetingLink, setMeetingLink] = useState('');
-
-  const [selectedDays, setSelectedDays] = useState<string[]>(['T2', 'T4', 'T6']);
-  const [tuitionFee, setTuitionFee] = useState<string>('5.000.000');
-  
-  // Selection States
   const [showStudentSelector, setShowStudentSelector] = useState(false);
-  const [selectedStudents, setSelectedStudents] = useState<Student[]>([]);
-  const [selectedLeads, setSelectedLeads] = useState<Lead[]>([]);
 
   // Filter Teachers from Staff
   const availableTeachers = useMemo(() => {
@@ -75,19 +92,17 @@ const CreateClass: React.FC = () => {
       return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // --- AUTO-GENERATE NAME & CODE (MINIMALIST) ---
+  // --- AUTO-GENERATE NAME & CODE ---
   useEffect(() => {
-      // Logic: 
-      // Name: K[Batch] [Online/Offline] [Level] ([ScheduleShort])
-      // Code: K[Batch].[Level][ON/OFF]
+      // Safety check for selectedDays to prevent crashes if it gets corrupted
+      const currentDays = Array.isArray(formData.selectedDays) ? formData.selectedDays : [];
       
       const dayOrder = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-      const sortedDays = [...selectedDays].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+      const sortedDays = [...currentDays].sort((a: string, b: string) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
       
-      // Generate Short Schedule: T2,T4,T6 -> T246. T3,T5,CN -> T35CN
       let scheduleDigits = '';
       let hasCN = false;
-      sortedDays.forEach(d => {
+      sortedDays.forEach((d: string) => {
           if (d === 'CN') hasCN = true;
           else scheduleDigits += d.replace('T', '');
       });
@@ -95,42 +110,55 @@ const CreateClass: React.FC = () => {
       if (hasCN) scheduleShort += 'CN';
       if (sortedDays.length === 0) scheduleShort = 'TBD';
 
-      const modeStr = classType === 'online' ? 'Online' : 'Offline';
-      const modeCode = classType === 'online' ? 'ON' : 'OFF';
+      const modeStr = formData.classType === 'online' ? 'Online' : 'Offline';
+      const modeCode = formData.classType === 'online' ? 'ON' : 'OFF';
       
-      const genName = `K${batch} ${modeStr} ${level} (${scheduleShort})`;
-      const genCode = `K${batch}.${level}${modeCode}`;
+      const genName = `K${formData.batch} ${modeStr} ${formData.level} (${scheduleShort})`;
+      const genCode = `K${formData.batch}.${formData.level}${modeCode}`;
 
-      setClassName(genName);
-      setClassCode(genCode);
+      // Only update if changed to avoid unnecessary renders
+      if (genName !== formData.className || genCode !== formData.classCode) {
+          setFormData({ ...formData, className: genName, classCode: genCode });
+      }
 
-  }, [batch, classType, level, selectedDays]);
+  }, [formData.batch, formData.classType, formData.level, formData.selectedDays]);
 
 
   // Auto-calculate End Date
   useEffect(() => {
-      if (startDate && totalSessions && selectedDays.length > 0) {
+      const currentDays = Array.isArray(formData.selectedDays) ? formData.selectedDays : [];
+      
+      if (formData.startDate && formData.totalSessions && currentDays.length > 0) {
           const dayOrder = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-          const sortedDays = [...selectedDays].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+          const sortedDays = [...currentDays].sort((a: string, b: string) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
           const daysStr = sortedDays.join(' / ');
-          const sessions = parseInt(totalSessions) || 0;
+          const sessions = parseInt(formData.totalSessions) || 0;
           
-          setCalculatedEndDate(recalculateSchedule(startDate, sessions, daysStr));
+          const end = recalculateSchedule(formData.startDate, sessions, daysStr);
+          setCalculatedEndDate(end);
       } else {
           setCalculatedEndDate('');
       }
-  }, [startDate, totalSessions, selectedDays, recalculateSchedule]);
+  }, [formData.startDate, formData.totalSessions, formData.selectedDays, recalculateSchedule]);
 
   const toggleDay = (day: string) => {
-    if (selectedDays.includes(day)) {
-      setSelectedDays(selectedDays.filter(d => d !== day));
+    let newDays;
+    const currentDays = Array.isArray(formData.selectedDays) ? formData.selectedDays : [];
+    
+    if (currentDays.includes(day)) {
+        newDays = currentDays.filter((d: string) => d !== day);
     } else {
-      setSelectedDays([...selectedDays, day]);
+        newDays = [...currentDays, day];
     }
+    setFormData({ ...formData, selectedDays: newDays });
+  };
+
+  const updateField = (field: string, value: any) => {
+      setFormData({ ...formData, [field]: value });
   };
 
   const handleSave = () => {
-    if (!className || !level) {
+    if (!formData.className || !formData.level) {
         alert("Vui lòng nhập tên lớp và trình độ!");
         return;
     }
@@ -140,30 +168,32 @@ const CreateClass: React.FC = () => {
         return;
     }
 
-    const sessions = parseInt(totalSessions) || 24;
+    const sessions = parseInt(formData.totalSessions) || 24;
     const dayOrder = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-    const sortedDays = [...selectedDays].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+    const currentDays = Array.isArray(formData.selectedDays) ? formData.selectedDays : [];
+    const sortedDays = [...currentDays].sort((a: string, b: string) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
 
     addClass({
-        name: className,
-        code: classCode, // Use generated code
-        level: level,
+        name: formData.className,
+        code: formData.classCode,
+        level: formData.level,
         schedule: sortedDays.join(' / ') + " • 18:30",
-        mode: classType,
+        mode: formData.classType as 'online' | 'offline',
         teacher: selectedTeacher.name,
         teacherAvatar: selectedTeacher.avatar,
         assistant: selectedAssistant?.name,
         assistantAvatar: selectedAssistant?.avatar,
-        maxStudents: parseInt(maxCapacity),
-        tuitionFee: parseInt(tuitionFee.replace(/\D/g, '')),
-        link: classType === 'online' ? meetingLink : undefined,
-        location: classType === 'offline' ? location : undefined,
-        startDate: startDate,
+        maxStudents: parseInt(formData.maxCapacity),
+        tuitionFee: parseInt(formData.tuitionFee.replace(/\D/g, '')),
+        link: formData.classType === 'online' ? formData.meetingLink : undefined,
+        location: formData.classType === 'offline' ? formData.location : undefined,
+        startDate: formData.startDate,
         endDate: calculatedEndDate,
         totalSessions: sessions
     }, selectedStudents.map(s => s.id), selectedLeads.map(l => l.id));
 
     alert("Đã tạo lớp học thành công và thêm học viên!");
+    clearDraft(); // Clear local storage draft
     navigate('/classes');
   };
 
@@ -175,32 +205,43 @@ const CreateClass: React.FC = () => {
       }
   };
 
+  const handleSelectTeacher = (teacher: Staff) => {
+      setSelectedTeacher(teacher);
+      updateField('selectedTeacherId', teacher.id);
+      setIsTeacherDropdownOpen(false);
+      setTeacherSearchTerm('');
+  };
+
+  const handleSelectAssistant = (assistant: Staff) => {
+      setSelectedAssistant(assistant);
+      updateField('selectedAssistantId', assistant.id);
+      setIsAssistantDropdownOpen(false);
+      setAssistantSearchTerm('');
+  };
+
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark">
+    <div className="flex flex-col h-full bg-background-light dark:bg-background-dark overflow-hidden">
       <Header title="Thêm Lớp học" />
       
-      <div className="flex-1 overflow-y-auto p-6 md:p-10 scroll-smooth">
-        <div className="max-w-6xl mx-auto flex flex-col gap-6 pb-10">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
+        <div className="max-w-5xl mx-auto flex flex-col gap-6 pb-20">
             
             {/* Page Title & Actions */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
-                    <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
+                    <div className="flex items-center gap-2 text-sm text-apple-gray mb-1">
                         <span onClick={() => navigate('/classes')} className="cursor-pointer hover:text-primary">Lớp học</span>
                         <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-                        <span className="text-slate-900 dark:text-white font-medium">Thêm mới</span>
+                        <span className="text-apple-black dark:text-white font-medium">Thêm mới</span>
                     </div>
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Thêm Lớp học mới</h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Thiết lập thông tin khóa học, học phí và thêm học viên.</p>
-                </div>
-                <div className="flex gap-3">
-                    <button onClick={() => navigate('/classes')} className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm">
-                        Hủy bỏ
-                    </button>
-                    <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-bold shadow-lg shadow-primary/30 transition-all flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[20px]">save</span>
-                        Lưu Lớp học
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-title text-apple-black dark:text-white tracking-tight">Thêm Lớp học mới</h2>
+                        <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded border border-orange-200 cursor-help font-bold" title="Dữ liệu đang được lưu nháp tự động">
+                            Auto-Draft
+                        </span>
+                    </div>
+                    <p className="text-apple-gray dark:text-slate-400 text-sm mt-1">Thiết lập thông tin khóa học, học phí và thêm học viên.</p>
                 </div>
             </div>
 
@@ -211,7 +252,7 @@ const CreateClass: React.FC = () => {
                     
                     {/* 1. General Info */}
                     <div className="bg-white dark:bg-[#1a202c] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-apple-black dark:text-white mb-4 flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">info</span>
                             Thông tin chung
                         </h3>
@@ -219,22 +260,22 @@ const CreateClass: React.FC = () => {
                             
                             {/* Auto-Gen Inputs */}
                             <div>
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Khóa số (Batch) <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Khóa số (Batch) <span className="text-red-500">*</span></label>
                                 <input 
-                                    className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
+                                    className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-apple-black dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
                                     type="text"
-                                    value={batch}
-                                    onChange={(e) => setBatch(e.target.value)}
+                                    value={formData.batch}
+                                    onChange={(e) => updateField('batch', e.target.value)}
                                     placeholder="61"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Trình độ <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Trình độ <span className="text-red-500">*</span></label>
                                 <div className="relative">
                                     <select 
-                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm appearance-none cursor-pointer"
-                                        value={level}
-                                        onChange={(e) => setLevel(e.target.value)}
+                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-apple-black dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm appearance-none cursor-pointer"
+                                        value={formData.level}
+                                        onChange={(e) => updateField('level', e.target.value)}
                                     >
                                         <option value="A1">A1</option>
                                         <option value="A2">A2</option>
@@ -249,27 +290,27 @@ const CreateClass: React.FC = () => {
                             </div>
 
                             <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">
                                     Tên lớp học (Tự động)
-                                    <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">Auto</span>
+                                    <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 font-bold">Auto</span>
                                 </label>
                                 <input 
                                     className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 focus:ring-0 px-3 py-2.5 text-sm font-bold" 
                                     type="text"
-                                    value={className}
+                                    value={formData.className}
                                     readOnly
                                 />
-                                <p className="text-xs text-slate-500 mt-1">Mã lớp: <span className="font-mono font-bold">{classCode}</span></p>
+                                <p className="text-xs text-slate-500 mt-1">Mã lớp: <span className="font-mono font-bold">{formData.classCode}</span></p>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Sức chứa tối đa</label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Sức chứa tối đa</label>
                                 <div className="relative">
                                     <input 
-                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 pl-10 text-sm" 
+                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-apple-black dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 pl-10 text-sm" 
                                         type="number" 
-                                        value={maxCapacity}
-                                        onChange={(e) => setMaxCapacity(e.target.value)}
+                                        value={formData.maxCapacity}
+                                        onChange={(e) => updateField('maxCapacity', e.target.value)}
                                     />
                                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3 text-slate-500">
                                         <span className="material-symbols-outlined text-[20px]">group</span>
@@ -279,28 +320,28 @@ const CreateClass: React.FC = () => {
                             
                             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-5 pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Tổng số buổi <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Tổng số buổi <span className="text-red-500">*</span></label>
                                     <input 
-                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
+                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-apple-black dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
                                         placeholder="40" 
                                         type="number" 
-                                        value={totalSessions}
-                                        onChange={(e) => setTotalSessions(e.target.value)}
+                                        value={formData.totalSessions}
+                                        onChange={(e) => updateField('totalSessions', e.target.value)}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Ngày bắt đầu</label>
+                                    <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Ngày bắt đầu</label>
                                     <input 
-                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
+                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-apple-black dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
                                         type="date"
-                                        value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
+                                        value={formData.startDate}
+                                        onChange={(e) => updateField('startDate', e.target.value)}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">
+                                    <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">
                                         Ngày kết thúc
-                                        <span className="ml-1 text-[10px] bg-secondary/10 text-secondary px-1.5 py-0.5 rounded-full border border-secondary/20">Auto Calc</span>
+                                        <span className="ml-1 text-[10px] bg-secondary/10 text-secondary px-1.5 py-0.5 rounded-full border border-secondary/20 font-bold">Auto Calc</span>
                                     </label>
                                     <div className="relative">
                                         <input 
@@ -321,13 +362,13 @@ const CreateClass: React.FC = () => {
                     {/* 2. Students & Leads Selection (New Section) */}
                     <div className="bg-white dark:bg-[#1a202c] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <h3 className="text-lg font-bold text-apple-black dark:text-white flex items-center gap-2">
                                 <span className="material-symbols-outlined text-primary">groups</span>
                                 Học viên trong lớp
                             </h3>
                             <button 
                                 onClick={() => setShowStudentSelector(true)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 hover:bg-primary/10 rounded-lg transition-colors border border-primary/10"
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-semibold text-primary bg-primary/5 hover:bg-primary/10 rounded-lg transition-colors border border-primary/10 whitespace-nowrap"
                             >
                                 <span className="material-symbols-outlined text-[16px]">person_add</span>
                                 Thêm học viên
@@ -346,7 +387,7 @@ const CreateClass: React.FC = () => {
                                         <p className="text-xs font-semibold text-slate-500 mb-2 uppercase">Học viên có sẵn ({selectedStudents.length})</p>
                                         <div className="flex flex-wrap gap-2">
                                             {selectedStudents.map(s => (
-                                                <div key={s.id} className="flex items-center gap-2 pl-1 pr-2 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-full border border-blue-100 dark:border-blue-800 text-xs">
+                                                <div key={s.id} className="flex items-center gap-2 pl-1 pr-2 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-full border border-blue-100 dark:border-blue-800 text-[13px] font-medium">
                                                     <div className="size-5 rounded-full bg-cover bg-center" style={s.avatar.startsWith('http') ? {backgroundImage: `url('${s.avatar}')`} : {backgroundColor: '#ccc'}}></div>
                                                     <span>{s.name}</span>
                                                     <button onClick={() => handleRemoveSelection(s.id, 'student')} className="hover:text-red-500"><span className="material-symbols-outlined text-[14px]">close</span></button>
@@ -358,11 +399,11 @@ const CreateClass: React.FC = () => {
                                 {selectedLeads.length > 0 && (
                                     <div>
                                         <p className="text-xs font-semibold text-slate-500 mb-2 uppercase flex items-center gap-1">
-                                            Leads <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 rounded">Sẽ chuyển đổi</span> ({selectedLeads.length})
+                                            Leads <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 rounded font-bold">Sẽ chuyển đổi</span> ({selectedLeads.length})
                                         </p>
                                         <div className="flex flex-wrap gap-2">
                                             {selectedLeads.map(l => (
-                                                <div key={l.id} className="flex items-center gap-2 pl-1 pr-2 py-1 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 rounded-full border border-orange-100 dark:border-orange-800 text-xs">
+                                                <div key={l.id} className="flex items-center gap-2 pl-1 pr-2 py-1 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 rounded-full border border-orange-100 dark:border-orange-800 text-[13px] font-medium">
                                                     <div className="size-5 rounded-full bg-cover bg-center" style={l.avatar.startsWith('http') ? {backgroundImage: `url('${l.avatar}')`} : {backgroundColor: '#ccc'}}></div>
                                                     <span>{l.name}</span>
                                                     <button onClick={() => handleRemoveSelection(l.id, 'lead')} className="hover:text-red-500"><span className="material-symbols-outlined text-[14px]">close</span></button>
@@ -375,8 +416,8 @@ const CreateClass: React.FC = () => {
                         )}
                         <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 flex justify-between text-sm">
                             <span className="text-slate-500">Tổng sĩ số dự kiến:</span>
-                            <span className={`font-bold ${selectedStudents.length + selectedLeads.length > parseInt(maxCapacity) ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
-                                {selectedStudents.length + selectedLeads.length} / {maxCapacity}
+                            <span className={`font-bold ${selectedStudents.length + selectedLeads.length > parseInt(formData.maxCapacity) ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
+                                {selectedStudents.length + selectedLeads.length} / {formData.maxCapacity}
                             </span>
                         </div>
                     </div>
@@ -384,7 +425,7 @@ const CreateClass: React.FC = () => {
                     {/* 3. Tuition & Fees */}
                     <div className="bg-white dark:bg-[#1a202c] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <h3 className="text-lg font-bold text-apple-black dark:text-white flex items-center gap-2">
                                 <span className="material-symbols-outlined text-primary">payments</span>
                                 Thiết lập Học phí
                             </h3>
@@ -396,13 +437,13 @@ const CreateClass: React.FC = () => {
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                             <div className="md:col-span-1">
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Học phí trọn gói <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Học phí trọn gói <span className="text-red-500">*</span></label>
                                 <div className="relative">
                                     <input 
-                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 pl-3 pr-12 text-sm font-semibold text-right" 
+                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-apple-black dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 pl-3 pr-12 text-sm font-semibold text-right" 
                                         type="text" 
-                                        value={tuitionFee}
-                                        onChange={(e) => setTuitionFee(e.target.value)}
+                                        value={formData.tuitionFee}
+                                        onChange={(e) => updateField('tuitionFee', e.target.value)}
                                     />
                                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 bg-slate-50 dark:bg-slate-700 rounded-r-lg border-l border-slate-200 dark:border-slate-600">
                                         <span className="text-xs font-bold">VNĐ</span>
@@ -411,10 +452,10 @@ const CreateClass: React.FC = () => {
                             </div>
                             
                             <div className="md:col-span-1">
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Đặt cọc tối thiểu</label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Đặt cọc tối thiểu</label>
                                 <div className="relative">
                                     <input 
-                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 pl-3 pr-12 text-sm text-right" 
+                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-apple-black dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 pl-3 pr-12 text-sm text-right" 
                                         type="text" 
                                         defaultValue="1.000.000"
                                     />
@@ -425,7 +466,7 @@ const CreateClass: React.FC = () => {
                             </div>
 
                             <div className="md:col-span-1">
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Giảm giá (Early Bird)</label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Giảm giá (Early Bird)</label>
                                 <div className="relative">
                                     <input 
                                         className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-green-600 font-medium focus:ring-primary focus:border-primary px-3 py-2.5 pl-3 pr-10 text-sm text-right" 
@@ -443,16 +484,16 @@ const CreateClass: React.FC = () => {
 
                 {/* RIGHT COLUMN */}
                 <div className="flex flex-col gap-6">
-                    {/* 4. Teacher (Updated) */}
+                    {/* 4. Teacher */}
                     <div className="bg-white dark:bg-[#1a202c] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 overflow-visible">
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-apple-black dark:text-white mb-4 flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">person_search</span>
                             Giáo viên & Trợ giảng
                         </h3>
                         <div className="flex flex-col gap-4">
                             {/* Main Teacher */}
                             <div className="relative" ref={teacherDropdownRef}>
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Giáo viên phụ trách <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Giáo viên phụ trách <span className="text-red-500">*</span></label>
                                 
                                 {/* Selector Trigger */}
                                 <div 
@@ -473,7 +514,7 @@ const CreateClass: React.FC = () => {
                                         </div>
                                         {selectedTeacher ? (
                                             <div className="flex flex-col leading-none">
-                                                <span className="text-sm font-bold text-slate-900 dark:text-white">{selectedTeacher.name}</span>
+                                                <span className="text-sm font-bold text-apple-black dark:text-white">{selectedTeacher.name}</span>
                                                 <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{selectedTeacher.email}</span>
                                             </div>
                                         ) : (
@@ -506,11 +547,7 @@ const CreateClass: React.FC = () => {
                                             {availableTeachers.map(teacher => (
                                                 <div 
                                                     key={teacher.id}
-                                                    onClick={() => {
-                                                        setSelectedTeacher(teacher);
-                                                        setIsTeacherDropdownOpen(false);
-                                                        setTeacherSearchTerm('');
-                                                    }}
+                                                    onClick={() => handleSelectTeacher(teacher)}
                                                     className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${selectedTeacher?.id === teacher.id ? 'bg-primary/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                                                 >
                                                     <Avatar src={teacher.avatar} name={teacher.name} className="size-9 text-xs border border-slate-200 dark:border-slate-600" />
@@ -535,9 +572,9 @@ const CreateClass: React.FC = () => {
                                 )}
                             </div>
 
-                            {/* Assistant Teacher (New) */}
+                            {/* Assistant Teacher */}
                             <div className="relative" ref={assistantDropdownRef}>
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Trợ giảng (Nếu có)</label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Trợ giảng (Nếu có)</label>
                                 
                                 {/* Selector Trigger */}
                                 <div 
@@ -558,7 +595,7 @@ const CreateClass: React.FC = () => {
                                         </div>
                                         {selectedAssistant ? (
                                             <div className="flex flex-col leading-none">
-                                                <span className="text-sm font-bold text-slate-900 dark:text-white">{selectedAssistant.name}</span>
+                                                <span className="text-sm font-bold text-apple-black dark:text-white">{selectedAssistant.name}</span>
                                                 <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{selectedAssistant.email}</span>
                                             </div>
                                         ) : (
@@ -567,7 +604,7 @@ const CreateClass: React.FC = () => {
                                     </div>
                                     {selectedAssistant ? (
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); setSelectedAssistant(null); }}
+                                            onClick={(e) => { e.stopPropagation(); setSelectedAssistant(null); updateField('selectedAssistantId', ''); }}
                                             className="text-slate-400 hover:text-red-500 transition-colors"
                                         >
                                             <span className="material-symbols-outlined">close</span>
@@ -600,11 +637,7 @@ const CreateClass: React.FC = () => {
                                             {availableAssistants.map(staff => (
                                                 <div 
                                                     key={staff.id}
-                                                    onClick={() => {
-                                                        setSelectedAssistant(staff);
-                                                        setIsAssistantDropdownOpen(false);
-                                                        setAssistantSearchTerm('');
-                                                    }}
+                                                    onClick={() => handleSelectAssistant(staff)}
                                                     className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${selectedAssistant?.id === staff.id ? 'bg-primary/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                                                 >
                                                     <Avatar src={staff.avatar} name={staff.name} className="size-9 text-xs border border-slate-200 dark:border-slate-600" />
@@ -633,58 +666,58 @@ const CreateClass: React.FC = () => {
 
                     {/* 5. Schedule & Format */}
                     <div className="bg-white dark:bg-[#1a202c] rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-apple-black dark:text-white mb-4 flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">calendar_month</span>
                             Lịch học & Địa điểm
                         </h3>
                         <div className="space-y-6">
                             <div>
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-3">Loại lớp học</label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-3">Loại lớp học</label>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <label className={`cursor-pointer relative rounded-xl border-2 p-3 transition-all flex flex-col items-center gap-2 ${classType === 'offline' ? 'border-primary bg-primary/5 dark:bg-primary/10' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                                        <input type="radio" name="classType" className="sr-only" checked={classType === 'offline'} onChange={() => setClassType('offline')} />
+                                    <label className={`cursor-pointer relative rounded-xl border-2 p-3 transition-all flex flex-col items-center gap-2 ${formData.classType === 'offline' ? 'border-primary bg-primary/5 dark:bg-primary/10' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                                        <input type="radio" name="classType" className="sr-only" checked={formData.classType === 'offline'} onChange={() => updateField('classType', 'offline')} />
                                         <span className="material-symbols-outlined text-2xl text-slate-600 dark:text-slate-300">apartment</span>
-                                        <span className="text-xs font-bold text-slate-900 dark:text-white">Offline</span>
+                                        <span className="text-xs font-bold text-apple-black dark:text-white">Offline</span>
                                     </label>
-                                    <label className={`cursor-pointer relative rounded-xl border-2 p-3 transition-all flex flex-col items-center gap-2 ${classType === 'online' ? 'border-primary bg-primary/5 dark:bg-primary/10' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                                        <input type="radio" name="classType" className="sr-only" checked={classType === 'online'} onChange={() => setClassType('online')} />
+                                    <label className={`cursor-pointer relative rounded-xl border-2 p-3 transition-all flex flex-col items-center gap-2 ${formData.classType === 'online' ? 'border-primary bg-primary/5 dark:bg-primary/10' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                                        <input type="radio" name="classType" className="sr-only" checked={formData.classType === 'online'} onChange={() => updateField('classType', 'online')} />
                                         <span className="material-symbols-outlined text-2xl text-slate-600 dark:text-slate-300">video_camera_front</span>
-                                        <span className="text-xs font-bold text-slate-900 dark:text-white">Online</span>
+                                        <span className="text-xs font-bold text-apple-black dark:text-white">Online</span>
                                     </label>
                                 </div>
                             </div>
 
-                            {classType === 'online' ? (
+                            {formData.classType === 'online' ? (
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Link học (Google Meet/Zoom)</label>
+                                    <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Link học Online</label>
                                     <input 
-                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
+                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-apple-black dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
                                         placeholder="https://meet.google.com/..." 
                                         type="text"
-                                        value={meetingLink}
-                                        onChange={(e) => setMeetingLink(e.target.value)}
+                                        value={formData.meetingLink}
+                                        onChange={(e) => updateField('meetingLink', e.target.value)}
                                     />
                                 </div>
                             ) : (
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-1.5">Địa chỉ học</label>
+                                    <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-1.5">Địa chỉ phòng học</label>
                                     <input 
-                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
+                                        className="w-full rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-apple-black dark:text-white focus:ring-primary focus:border-primary px-3 py-2.5 text-sm" 
                                         placeholder="Nhập địa chỉ..." 
                                         type="text"
-                                        value={location}
-                                        onChange={(e) => setLocation(e.target.value)}
+                                        value={formData.location}
+                                        onChange={(e) => updateField('location', e.target.value)}
                                     />
                                 </div>
                             )}
                             
                             <div>
-                                <label className="block text-sm font-medium text-slate-900 dark:text-slate-200 mb-2">Ngày học trong tuần</label>
+                                <label className="block text-sm font-semibold text-apple-black dark:text-slate-200 mb-2">Ngày học trong tuần</label>
                                 <div className="flex flex-wrap gap-2">
                                     {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((day) => (
-                                        <label key={day} className="cursor-pointer">
-                                            <input type="checkbox" className="sr-only" checked={selectedDays.includes(day)} onChange={() => toggleDay(day)} />
-                                            <div className={`size-9 rounded-lg border flex items-center justify-center text-xs font-bold transition-all ${selectedDays.includes(day) ? 'bg-primary text-white border-primary' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'}`}>
+                                        <label key={day} className="cursor-pointer select-none">
+                                            <input type="checkbox" className="sr-only" checked={(Array.isArray(formData.selectedDays) ? formData.selectedDays : []).includes(day)} onChange={() => toggleDay(day)} />
+                                            <div className={`size-9 rounded-lg border flex items-center justify-center text-xs font-bold transition-all ${(Array.isArray(formData.selectedDays) ? formData.selectedDays : []).includes(day) ? 'bg-primary text-white border-primary' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'}`}>
                                                 {day}
                                             </div>
                                         </label>
@@ -696,6 +729,17 @@ const CreateClass: React.FC = () => {
                 </div>
             </div>
         </div>
+      </div>
+
+      {/* Sticky Footer - Positioned relative to flex container, outside scroll area */}
+      <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1a202c] p-4 md:px-8 flex justify-end gap-3 shrink-0 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <button onClick={() => { clearDraft(); navigate('/classes'); }} className="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[13px] font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap">
+              Hủy bỏ
+          </button>
+          <button onClick={handleSave} className="px-6 py-2.5 rounded-lg bg-primary hover:bg-primary-dark text-white text-[13px] font-bold shadow-lg shadow-primary/30 transition-all flex items-center gap-2 whitespace-nowrap">
+              <span className="material-symbols-outlined text-[18px]">save</span>
+              Lưu Lớp học
+          </button>
       </div>
 
       {showStudentSelector && (

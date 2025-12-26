@@ -1,8 +1,10 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
 import { Staff } from '../types';
+import { useFormPersistence } from '../hooks/useFormPersistence';
 
 interface PermissionRow {
   id: string;
@@ -27,8 +29,8 @@ const CreateStaff: React.FC = () => {
   const navigate = useNavigate();
   const { addStaff } = useData();
   
-  // Form State
-  const [formData, setFormData] = useState({
+  // Form State with Persistence
+  const [formData, setFormData, clearDraft] = useFormPersistence('draft_staff_form', {
       name: '',
       email: '',
       phone: '',
@@ -83,6 +85,7 @@ const CreateStaff: React.FC = () => {
       });
 
       alert("Đã thêm nhân viên thành công!");
+      clearDraft();
       navigate('/staff');
   };
 
@@ -131,7 +134,7 @@ const CreateStaff: React.FC = () => {
                 </div>
                 <div className="flex gap-3">
                     <button 
-                        onClick={() => navigate('/staff')}
+                        onClick={() => { clearDraft(); navigate('/staff'); }}
                         className="px-4 py-2 bg-white dark:bg-[#1a202c] border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                     >
                         Hủy
@@ -342,7 +345,7 @@ const CreateStaff: React.FC = () => {
             {/* Mobile Action Bar */}
             <div className="flex items-center justify-end gap-3 pt-4 md:hidden">
                 <button 
-                    onClick={() => navigate('/staff')}
+                    onClick={() => { clearDraft(); navigate('/staff'); }}
                     className="w-full px-4 py-3 bg-white dark:bg-[#1a202c] border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200"
                 >
                     Hủy

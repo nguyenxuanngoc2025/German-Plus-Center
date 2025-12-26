@@ -173,10 +173,14 @@ const InvoiceList: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display">
-      <Header title="Danh sách Phiếu thu" />
+      <div className="md:hidden">
+          <Header title="Danh sách Phiếu thu" />
+      </div>
       
       {/* UNIFIED FILTER BAR */}
       <AdvancedFilterBar 
+        title="Quản lý Thu phí"
+        subtitle="Theo dõi hóa đơn & thanh toán"
         onFilterChange={setFilters}
         showDate={true}
         showClass={true}
@@ -189,69 +193,58 @@ const InvoiceList: React.FC = () => {
             { label: 'Chưa thu', value: 'unpaid' }
         ]}
         className="border-b border-slate-200 dark:border-slate-700"
-      />
-
-      <main className="flex-1 overflow-y-auto p-6 md:p-8">
-        <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
-          
-          {/* HEADER & MINI DASHBOARD */}
-          <div className="flex flex-col gap-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Quản lý Thu phí</h1>
-                <div className="flex items-center gap-3">
-                    <button 
-                        onClick={() => navigate('/invoices/create')}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg shadow-md hover:bg-primary-dark transition-all"
-                    >
-                        <span className="material-symbols-outlined text-[20px]">add</span>
-                        Tạo Phiếu thu
-                    </button>
-                </div>
-              </div>
-
-              {/* MINI-DASHBOARD (Interactive) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                      <p className="text-slate-500 text-xs font-bold uppercase">Cần thu (Dự kiến)</p>
-                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{formatCurrency(stats.totalDue)}</h3>
-                      <p className="text-xs text-slate-400 mt-1">{stats.count} phiếu thu</p>
-                  </div>
-                  <div className="p-4 bg-green-50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-800">
-                      <p className="text-green-700 dark:text-green-300 text-xs font-bold uppercase">Đã thực thu</p>
-                      <h3 className="text-2xl font-bold text-green-700 dark:text-green-300 mt-1">{formatCurrency(stats.collected)}</h3>
-                      <p className="text-xs text-green-600 mt-1">Đạt {Math.round((stats.collected/stats.totalDue)*100) || 0}%</p>
-                  </div>
-                  <div className="p-4 bg-orange-50 dark:bg-orange-900/10 rounded-xl border border-orange-100 dark:border-orange-800">
-                      <p className="text-orange-700 dark:text-orange-300 text-xs font-bold uppercase">Còn lại (Công nợ)</p>
-                      <h3 className="text-2xl font-bold text-orange-700 dark:text-orange-300 mt-1">{formatCurrency(stats.remaining)}</h3>
-                      <p className="text-xs text-orange-600 mt-1">Cần đốc thúc</p>
-                  </div>
-              </div>
-          </div>
-
-          {/* LOCAL SEARCH */}
-          <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col lg:flex-row gap-4 justify-between items-center sticky top-0 z-10">
-            <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
-              <div className="relative w-full sm:w-64">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+        children={
+            <div className="relative w-full max-w-[200px] lg:max-w-[300px]">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
                 <input 
-                  className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary dark:text-white" 
+                  className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary dark:text-white" 
                   placeholder="Tìm phiếu, học viên..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
-              </div>
             </div>
-            <div className="flex gap-2">
+        }
+        actions={
+            <>
                 <ColumnSelector 
                     tableId="invoice_table"
                     columns={columnOptions}
                     onChange={setVisibleColumns}
                 />
-                <button className="h-10 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-600 font-bold text-sm">
+                <button className="h-9 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-600 font-bold text-xs whitespace-nowrap">
                     Xuất Excel
                 </button>
-            </div>
+                <button 
+                    onClick={() => navigate('/invoices/create')}
+                    className="flex items-center justify-center gap-2 px-3 h-9 bg-primary text-white text-xs font-bold rounded-lg shadow-md hover:bg-primary-dark transition-all whitespace-nowrap"
+                >
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    Tạo Phiếu thu
+                </button>
+            </>
+        }
+      />
+
+      <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
+          
+          {/* MINI-DASHBOARD (Interactive) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <p className="text-slate-500 text-xs font-bold uppercase">Cần thu (Dự kiến)</p>
+                  <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{formatCurrency(stats.totalDue)}</h3>
+                  <p className="text-xs text-slate-400 mt-1">{stats.count} phiếu thu</p>
+              </div>
+              <div className="p-4 bg-green-50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-800">
+                  <p className="text-green-700 dark:text-green-300 text-xs font-bold uppercase">Đã thực thu</p>
+                  <h3 className="text-2xl font-bold text-green-700 dark:text-green-300 mt-1">{formatCurrency(stats.collected)}</h3>
+                  <p className="text-xs text-green-600 mt-1">Đạt {Math.round((stats.collected/stats.totalDue)*100) || 0}%</p>
+              </div>
+              <div className="p-4 bg-orange-50 dark:bg-orange-900/10 rounded-xl border border-orange-100 dark:border-orange-800">
+                  <p className="text-orange-700 dark:text-orange-300 text-xs font-bold uppercase">Còn lại (Công nợ)</p>
+                  <h3 className="text-2xl font-bold text-orange-700 dark:text-orange-300 mt-1">{formatCurrency(stats.remaining)}</h3>
+                  <p className="text-xs text-orange-600 mt-1">Cần đốc thúc</p>
+              </div>
           </div>
 
           {/* DATA TABLE */}

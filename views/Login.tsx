@@ -1,9 +1,11 @@
 
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
+import { useNavigate } from 'react-router-dom';
 
 const Login: React.FC = () => {
   const { login, settings } = useData(); // Use Settings
+  const navigate = useNavigate();
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,7 +20,11 @@ const Login: React.FC = () => {
     }
     
     const success = login(account, password);
-    if (!success) {
+    if (success) {
+        // Redirect to saved path or dashboard
+        const lastPath = localStorage.getItem('gp_last_path') || '/';
+        navigate(lastPath);
+    } else {
         setError('Tên đăng nhập hoặc mật khẩu không chính xác');
     }
   };

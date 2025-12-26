@@ -3,7 +3,8 @@ import React, { useState, useMemo } from 'react';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
 import { useNavigate } from 'react-router-dom';
-import { readMoney } from '../components/InvoicePrintModal'; // Import helper
+import { readMoney } from '../components/InvoicePrintModal'; 
+import { useFormPersistence } from '../hooks/useFormPersistence';
 
 interface ServiceItem {
   id: number;
@@ -16,32 +17,30 @@ const CreateInvoice: React.FC = () => {
   const navigate = useNavigate();
   const { addFinanceRecord, settings, currentUser } = useData();
 
-  // Form State
-  const [studentName, setStudentName] = useState('Nguyễn Thành Nam');
-  const [courseName, setCourseName] = useState('A1 Intensiv - K24 (Đang học)');
-  const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
-  
-  // Items State
-  const [items, setItems] = useState<ServiceItem[]>([
-    { id: 1, name: 'Học phí khóa A1 Intensiv', quantity: 1, price: 5000000 },
-    { id: 2, name: 'Giáo trình Studio 21 - A1', quantity: 1, price: 250000 }
-  ]);
-
-  // Discount State
-  const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
-  const [discountValue, setDiscountValue] = useState<number>(0);
+  // Persistent Form State
+  const [formData, setFormData, clearDraft] = useFormPersistence('draft_invoice_form', {
+      studentName: 'Nguyễn Thành Nam',
+      courseName: 'A1 Intensiv - K24 (Đang học)',
+      issueDate: new Date().toISOString().split('T')[0],
+      items: [
+        { id: 1, name: 'Học phí khóa A1 Intensiv', quantity: 1, price: 5000000 },
+        { id: 2, name: 'Giáo trình Studio 21 - A1', quantity: 1, price: 250000 }
+      ] as ServiceItem[],
+      discountType: 'percent' as 'percent' | 'amount',
+      discountValue: 0
+  });
 
   // Calculations
   const subtotal = useMemo(() => {
-    return items.reduce((acc, item) => acc + (item.quantity * item.price), 0);
-  }, [items]);
+    return formData.items.reduce((acc: number, item: ServiceItem) => acc + (item.quantity * item.price), 0);
+  }, [formData.items]);
 
   const discountAmount = useMemo(() => {
-    if (discountType === 'percent') {
-      return (subtotal * discountValue) / 100;
+    if (formData.discountType === 'percent') {
+      return (subtotal * formData.discountValue) / 100;
     }
-    return discountValue;
-  }, [subtotal, discountType, discountValue]);
+    return formData.discountValue;
+  }, [subtotal, formData.discountType, formData.discountValue]);
 
   const total = subtotal - discountAmount;
 
@@ -53,35 +52,38 @@ const CreateInvoice: React.FC = () => {
       quantity: 1,
       price: 0
     };
-    setItems([...items, newItem]);
+    setFormData({ ...formData, items: [...formData.items, newItem] });
   };
 
   const handleRemoveItem = (id: number) => {
-    setItems(items.filter(item => item.id !== id));
+    setFormData({ ...formData, items: formData.items.filter((item: ServiceItem) => item.id !== id) });
   };
 
   const handleItemChange = (id: number, field: keyof ServiceItem, value: string | number) => {
-    setItems(items.map(item => {
-      if (item.id === id) {
-        return { ...item, [field]: value };
-      }
-      return item;
-    }));
+    setFormData({
+        ...formData,
+        items: formData.items.map((item: ServiceItem) => {
+            if (item.id === id) {
+                return { ...item, [field]: value };
+            }
+            return item;
+        })
+    });
   };
 
   const handleSave = () => {
-      // Create a unified description from items
-      const description = items.map(i => `${i.name}`).join(', ');
+      const description = formData.items.map((i: ServiceItem) => `${i.name}`).join(', ');
 
       addFinanceRecord({
           type: 'income',
           amount: total,
           category: 'Tuition',
-          description: description + ` - ${studentName}`,
-          date: issueDate
+          description: description + ` - ${formData.studentName}`,
+          date: formData.issueDate
       });
 
       alert('Đã lưu và xuất phiếu thu thành công!');
+      clearDraft();
       navigate('/finance/invoices');
   };
 
@@ -102,7 +104,7 @@ const CreateInvoice: React.FC = () => {
               <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Lập phiếu thu học phí và các khoản dịch vụ khác.</p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => navigate('/finance/invoices')} className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2">
+              <button onClick={() => { clearDraft(); navigate('/finance/invoices'); }} className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2">
                 <span className="material-symbols-outlined text-[20px]">close</span>
                 <span>Hủy</span>
               </button>
@@ -137,8 +139,8 @@ const CreateInvoice: React.FC = () => {
                         className="block w-full pl-10 pr-10 py-2.5 rounded-lg border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm" 
                         placeholder="Tìm kiếm tên hoặc mã HV..." 
                         type="text" 
-                        value={studentName}
-                        onChange={(e) => setStudentName(e.target.value)}
+                        value={formData.studentName}
+                        onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
                       />
                     </div>
                   </label>
@@ -147,8 +149,8 @@ const CreateInvoice: React.FC = () => {
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Lớp / Nội dung</span>
                     <input 
                         className="block w-full py-2.5 px-3 rounded-lg border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm"
-                        value={courseName}
-                        onChange={(e) => setCourseName(e.target.value)}
+                        value={formData.courseName}
+                        onChange={(e) => setFormData({ ...formData, courseName: e.target.value })}
                         placeholder="Nhập địa chỉ hoặc lớp..."
                     />
                   </label>
@@ -158,8 +160,8 @@ const CreateInvoice: React.FC = () => {
                     <input 
                       className="block w-full py-2.5 rounded-lg border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:border-primary focus:ring-primary sm:text-sm" 
                       type="date" 
-                      value={issueDate}
-                      onChange={(e) => setIssueDate(e.target.value)}
+                      value={formData.issueDate}
+                      onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
                     />
                   </label>
                 </div>
@@ -180,7 +182,7 @@ const CreateInvoice: React.FC = () => {
                 
                 {/* List of Items Input */}
                 <div className="flex flex-col gap-4">
-                  {items.map((item, index) => (
+                  {formData.items.map((item: ServiceItem) => (
                     <div key={item.id} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700/50 group relative animate-in fade-in slide-in-from-top-2">
                       <button 
                         onClick={() => handleRemoveItem(item.id)}
@@ -225,14 +227,14 @@ const CreateInvoice: React.FC = () => {
                       <span className="text-sm text-slate-600 dark:text-slate-400">Giảm giá / Học bổng</span>
                       <div className="flex bg-slate-100 dark:bg-slate-800 rounded-md p-0.5">
                         <button 
-                            onClick={() => setDiscountType('percent')}
-                            className={`px-2 py-0.5 text-xs font-medium rounded shadow-sm transition-all ${discountType === 'percent' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+                            onClick={() => setFormData({...formData, discountType: 'percent'})}
+                            className={`px-2 py-0.5 text-xs font-medium rounded shadow-sm transition-all ${formData.discountType === 'percent' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
                         >
                             %
                         </button>
                         <button 
-                            onClick={() => setDiscountType('amount')}
-                            className={`px-2 py-0.5 text-xs font-medium rounded shadow-sm transition-all ${discountType === 'amount' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+                            onClick={() => setFormData({...formData, discountType: 'amount'})}
+                            className={`px-2 py-0.5 text-xs font-medium rounded shadow-sm transition-all ${formData.discountType === 'amount' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
                         >
                             VNĐ
                         </button>
@@ -242,10 +244,10 @@ const CreateInvoice: React.FC = () => {
                       <input 
                         className="w-full text-sm border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 rounded-md text-right px-2 py-1 dark:text-white" 
                         type="text" 
-                        value={discountValue}
-                        onChange={(e) => setDiscountValue(parseInt(e.target.value.replace(/\D/g, '')) || 0)}
+                        value={formData.discountValue}
+                        onChange={(e) => setFormData({...formData, discountValue: parseInt(e.target.value.replace(/\D/g, '')) || 0})}
                       />
-                      <span className="text-sm text-slate-500 w-8">{discountType === 'percent' ? '%' : 'đ'}</span>
+                      <span className="text-sm text-slate-500 w-8">{formData.discountType === 'percent' ? '%' : 'đ'}</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-2">
@@ -284,7 +286,7 @@ const CreateInvoice: React.FC = () => {
                             </div>
                             <div className="flex flex-col">
                                 <h1 className="text-lg font-bold uppercase tracking-wider text-slate-900">{settings.systemName}</h1>
-                                <p className="text-xs italic text-slate-600">{settings.footerInfo.split('|')[0] || 'Hà Nội'}</p>
+                                <p className="text-xs italic text-slate-600">{settings.footerInfo.split('|')[0] || '102 Ngô Quyền, Hà Đông, Hà Nội'}</p>
                                 <p className="text-xs font-bold text-slate-800">Hotline: {settings.footerInfo.split('Hotline: ')[1] || '1900 1234'}</p>
                             </div>
                         </div>
@@ -302,16 +304,16 @@ const CreateInvoice: React.FC = () => {
                     <div className="mb-6 space-y-3 text-sm leading-relaxed">
                         <div className="flex items-baseline">
                             <span className="w-40 font-bold shrink-0">Họ và tên người nộp:</span>
-                            <span className="flex-1 border-b border-slate-400 border-dashed px-2 font-medium">{studentName}</span>
+                            <span className="flex-1 border-b border-slate-400 border-dashed px-2 font-medium">{formData.studentName}</span>
                         </div>
                         <div className="flex items-baseline">
                             <span className="w-40 font-bold shrink-0">Địa chỉ / Lớp học:</span>
-                            <span className="flex-1 border-b border-slate-400 border-dashed px-2">{courseName}</span>
+                            <span className="flex-1 border-b border-slate-400 border-dashed px-2">{formData.courseName}</span>
                         </div>
                         <div className="flex items-baseline">
                             <span className="w-40 font-bold shrink-0">Lý do nộp:</span>
                             <span className="flex-1 border-b border-slate-400 border-dashed px-2">
-                                {items.map(i => i.name).join(', ')}
+                                {formData.items.map((i: ServiceItem) => i.name).join(', ')}
                             </span>
                         </div>
                         <div className="flex items-baseline">
@@ -326,7 +328,7 @@ const CreateInvoice: React.FC = () => {
 
                     {/* Footer Date & Signatures */}
                     <div className="flex justify-end mb-8">
-                        <p className="italic text-slate-600 text-sm">Hà Nội, ngày {new Date(issueDate).getDate()} tháng {new Date(issueDate).getMonth() + 1} năm {new Date(issueDate).getFullYear()}</p>
+                        <p className="italic text-slate-600 text-sm">Hà Nội, ngày {new Date(formData.issueDate).getDate()} tháng {new Date(formData.issueDate).getMonth() + 1} năm {new Date(formData.issueDate).getFullYear()}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-10 text-center">
@@ -334,7 +336,7 @@ const CreateInvoice: React.FC = () => {
                             <p className="font-bold uppercase text-xs">Người nộp tiền</p>
                             <p className="text-[10px] italic text-slate-500">(Ký, họ tên)</p>
                             <div className="h-16"></div>
-                            <p className="font-bold text-slate-800 text-sm">{studentName}</p>
+                            <p className="font-bold text-slate-800 text-sm">{formData.studentName}</p>
                         </div>
                         <div>
                             <p className="font-bold uppercase text-xs">Người thu tiền</p>

@@ -65,80 +65,79 @@ const ExpenseList: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display">
-      <Header title="Danh sách Chi phí" />
+      <div className="md:hidden">
+          <Header title="Danh sách Chi phí" />
+      </div>
       
       {/* UNIFIED FILTER BAR */}
       <AdvancedFilterBar 
+        title="Quản lý Chi phí"
+        subtitle="Kiểm soát chi tiêu vận hành"
         onFilterChange={setFilters}
         showDate={true}
         showCompare={false}
         className="border-b border-slate-200 dark:border-slate-700"
+        children={
+            <div className="flex gap-3 items-center">
+                <div className="relative w-full max-w-[200px]">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+                    <input 
+                      className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary dark:text-white" 
+                      placeholder="Tìm nội dung chi..." 
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <select 
+                    className="h-9 pl-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-white focus:ring-primary cursor-pointer"
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                >
+                    <option value="all">Tất cả danh mục</option>
+                    <option value="Lương">Lương</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Thuê">Thuê mặt bằng</option>
+                    <option value="Tiện ích">Tiện ích</option>
+                    <option value="Sửa chữa">Sửa chữa</option>
+                </select>
+            </div>
+        }
+        actions={
+            <>
+                <button className="h-9 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-600 font-bold text-xs">
+                    Xuất Excel
+                </button>
+                <button 
+                    onClick={() => navigate('/finance/expenses/create')}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg shadow-md hover:bg-primary-dark transition-all h-9 whitespace-nowrap"
+                >
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    Thêm Chi phí
+                </button>
+            </>
+        }
       />
       
       <main className="flex-1 overflow-y-auto p-6 md:p-8">
         <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
           
-          {/* HEADER & MINI DASHBOARD */}
-          <div className="flex flex-col gap-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Quản lý Chi phí</h1>
-                <button 
-                    onClick={() => navigate('/finance/expenses/create')}
-                    className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg shadow-md hover:bg-primary-dark transition-all"
-                >
-                    <span className="material-symbols-outlined text-[20px]">add</span>
-                    Thêm Chi phí
-                </button>
+          {/* MINI-DASHBOARD */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <p className="text-slate-500 text-xs font-bold uppercase">Tổng chi thực tế</p>
+                  <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{formatCurrency(stats.total)}</h3>
+                  <p className="text-xs text-slate-400 mt-1">{stats.count} khoản chi</p>
               </div>
-
-              {/* MINI-DASHBOARD */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                      <p className="text-slate-500 text-xs font-bold uppercase">Tổng chi thực tế</p>
-                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{formatCurrency(stats.total)}</h3>
-                      <p className="text-xs text-slate-400 mt-1">{stats.count} khoản chi</p>
-                  </div>
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-800">
-                      <p className="text-blue-700 dark:text-blue-300 text-xs font-bold uppercase">Đã thanh toán</p>
-                      <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-1">{formatCurrency(stats.total)}</h3>
-                      <p className="text-xs text-blue-500 mt-1">100% hoàn tất</p>
-                  </div>
-                  <div className="p-4 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-100 dark:border-red-800">
-                      <p className="text-red-700 dark:text-red-300 text-xs font-bold uppercase">Nợ nhà cung cấp</p>
-                      <h3 className="text-2xl font-bold text-red-700 dark:text-red-300 mt-1">{formatCurrency(0)}</h3>
-                      <p className="text-xs text-red-500 mt-1">Không có nợ tồn đọng</p>
-                  </div>
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-800">
+                  <p className="text-blue-700 dark:text-blue-300 text-xs font-bold uppercase">Đã thanh toán</p>
+                  <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-1">{formatCurrency(stats.total)}</h3>
+                  <p className="text-xs text-blue-500 mt-1">100% hoàn tất</p>
               </div>
-          </div>
-
-          {/* LOCAL SEARCH & CATEGORY */}
-          <div className="bg-white dark:bg-[#1a202c] p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col lg:flex-row gap-4 justify-between items-center sticky top-0 z-10">
-            <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
-              <div className="relative w-full sm:w-64">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-                <input 
-                  className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary dark:text-white" 
-                  placeholder="Tìm nội dung chi..." 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+              <div className="p-4 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-100 dark:border-red-800">
+                  <p className="text-red-700 dark:text-red-300 text-xs font-bold uppercase">Nợ nhà cung cấp</p>
+                  <h3 className="text-2xl font-bold text-red-700 dark:text-red-300 mt-1">{formatCurrency(0)}</h3>
+                  <p className="text-xs text-red-500 mt-1">Không có nợ tồn đọng</p>
               </div>
-              <select 
-                  className="h-10 pl-3 pr-8 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-white focus:ring-primary cursor-pointer"
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-              >
-                  <option value="all">Tất cả danh mục</option>
-                  <option value="Lương">Lương</option>
-                  <option value="Marketing">Marketing</option>
-                  <option value="Thuê">Thuê mặt bằng</option>
-                  <option value="Tiện ích">Tiện ích</option>
-                  <option value="Sửa chữa">Sửa chữa</option>
-              </select>
-            </div>
-            <button className="h-10 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-600 font-bold text-sm">
-                Xuất Excel
-            </button>
           </div>
 
           {/* DATA TABLE */}

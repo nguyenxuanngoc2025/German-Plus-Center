@@ -1,15 +1,16 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
+import { useFormPersistence } from '../hooks/useFormPersistence';
 
 const CreateExpense: React.FC = () => {
   const navigate = useNavigate();
   const { addFinanceRecord } = useData();
 
-  // Form State
-  const [formData, setFormData] = useState({
+  // Form State with Persistence
+  const [formData, setFormData, clearDraft] = useFormPersistence('draft_expense_form', {
     name: '',
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -35,6 +36,7 @@ const CreateExpense: React.FC = () => {
     });
 
     alert("Đã lưu khoản chi thành công!");
+    clearDraft();
     navigate('/finance/expenses');
   };
 
@@ -201,7 +203,7 @@ const CreateExpense: React.FC = () => {
                     <div className="col-span-1 md:col-span-2 flex items-center justify-end gap-4 mt-4 pt-4 border-t border-[#f0f2f4] dark:border-[#2d3748]">
                         <button 
                             type="button"
-                            onClick={() => navigate('/finance/expenses')}
+                            onClick={() => { clearDraft(); navigate('/finance/expenses'); }}
                             className="rounded-lg border border-[#dbdfe6] bg-white px-5 py-2.5 text-sm font-semibold text-[#111318] shadow-sm hover:bg-[#f9fafb] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#dbdfe6] dark:bg-[#2d3748] dark:border-[#4a5568] dark:text-white dark:hover:bg-[#4a5568] transition-all"
                         >
                             Hủy

@@ -95,18 +95,18 @@ const StaffList: React.FC = () => {
             
             {/* Page Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Danh sách nhân viên</h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm md:text-base">Quản lý thông tin, phân quyền và trạng thái hoạt động của nhân sự.</p>
+                <div className="min-w-0 flex-1">
+                    <h1 className="text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white tracking-tight truncate">Danh sách nhân viên</h1>
+                    <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm md:text-base truncate">Quản lý thông tin, phân quyền và trạng thái hoạt động của nhân sự.</p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button className="flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm">
+                <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+                    <button className="flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm whitespace-nowrap">
                         <span className="material-symbols-outlined text-[20px]">download</span>
                         <span className="hidden sm:inline">Xuất dữ liệu</span>
                     </button>
                     <button 
                         onClick={() => navigate('/staff/create')}
-                        className="flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors shadow-sm shadow-primary/30"
+                        className="flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors shadow-sm shadow-primary/30 whitespace-nowrap"
                     >
                         <span className="material-symbols-outlined text-[20px]">add</span>
                         <span>Thêm nhân viên</span>

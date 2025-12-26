@@ -110,13 +110,29 @@ const FinanceDashboard: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-[#f8fafc] dark:bg-[#0f172a] font-display">
-      <Header title="Trung tâm Tài chính" />
+      <div className="md:hidden">
+          <Header title="Trung tâm Tài chính" />
+      </div>
       
       <AdvancedFilterBar 
+        title="Dashboard Tài chính"
+        subtitle="Tổng hợp dòng tiền & Công nợ"
         onFilterChange={setFilters}
         showClass={true}
         showCompare={true}
         className="border-b border-slate-200 dark:border-slate-700"
+        actions={
+            <div className="flex justify-end gap-2">
+                <button onClick={() => setDrillDown({ type: 'audit' })} className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-sm h-9 whitespace-nowrap">
+                    <span className="material-symbols-outlined text-[18px]">fact_check</span>
+                    Đối soát
+                </button>
+                <button className="px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold hover:bg-primary-dark transition-colors shadow-md shadow-primary/20 flex items-center gap-2 h-9 whitespace-nowrap">
+                    <span className="material-symbols-outlined text-[18px]">download</span>
+                    Báo cáo
+                </button>
+            </div>
+        }
       />
 
       <main className="flex-1 overflow-y-auto p-6 md:p-8 scroll-smooth">
@@ -163,18 +179,6 @@ const FinanceDashboard: React.FC = () => {
                     </div>
                 </div>
             )}
-
-            {/* 1. EXTRA ACTIONS BAR */}
-            <div className="flex justify-end gap-2">
-                <button onClick={() => setDrillDown({ type: 'audit' })} className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-sm">
-                    <span className="material-symbols-outlined text-[18px]">fact_check</span>
-                    Đối soát quỹ
-                </button>
-                <button className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-dark transition-colors shadow-md shadow-primary/20 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[18px]">download</span>
-                    Báo cáo
-                </button>
-            </div>
 
             {/* 2. EXECUTIVE SCORECARDS */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
