@@ -9,7 +9,7 @@ interface Props {
 }
 
 const EditClassModal: React.FC<Props> = ({ classData, onClose }) => {
-  const { updateClass, calculateEndDate } = useData();
+  const { updateClass, recalculateSchedule } = useData();
   
   // Local state for Schedule Builder
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
@@ -89,29 +89,30 @@ const EditClassModal: React.FC<Props> = ({ classData, onClose }) => {
       const daysString = sortedDays.join(' / ');
       const finalSchedule = `${daysString} • ${classTime}`;
       
-      // 3. Auto Calculate End Date
+      // 3. Auto Calculate End Date using RECALCULATE ENGINE
       let newEndDate = formData.endDate;
       let calculated = false;
 
       if (formData.startDate && formData.totalSessions > 0 && daysString) {
           // Pass offDaysList to calculation engine
-          newEndDate = calculateEndDate(formData.startDate, formData.totalSessions, daysString, offDaysList);
+          newEndDate = recalculateSchedule(formData.startDate, formData.totalSessions, daysString, offDaysList);
           calculated = true;
       }
 
       // Check if schedule shifted logic needs display
-      if (calculated && newEndDate !== formData.endDate && formData.endDate !== '') {
+      // We compare calculated date vs stored date. 
+      // If user adds an off day, calculated date will shift forward.
+      if (calculated && newEndDate !== formData.endDate) {
           setIsScheduleShifted(true);
           // Auto hide notification after 3s
           const timer = setTimeout(() => setIsScheduleShifted(false), 3000);
-          // Cleanup not needed inside effect for this simple case usually, but good practice
           return () => clearTimeout(timer);
       }
 
       setFormData(prev => ({ 
           ...prev, 
           schedule: finalSchedule,
-          endDate: newEndDate
+          endDate: newEndDate // Always update to the calculated one in edit mode
       }));
   }, [selectedDays, classTime, formData.startDate, formData.totalSessions, offDaysList]);
 

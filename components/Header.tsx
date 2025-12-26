@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useNavigate } from 'react-router-dom';
 import Avatar from './Avatar';
+import { Notification } from '../types';
 
 interface HeaderProps {
   title: string;
@@ -147,9 +148,27 @@ const Header: React.FC<HeaderProps> = ({ title }) => {
       setSearchTerm('');
   };
 
-  const handleNotificationClick = (id: string) => {
-      markAsRead(id);
-      // Optional: Add navigation logic based on type later
+  const handleNotificationClick = (notif: Notification) => {
+      // 1. Mark as read
+      markAsRead(notif.id);
+      
+      // 2. Perform Navigation based on type and relatedId
+      if (notif.type === 'debt' && notif.relatedId) {
+          // Debt -> Debt Management -> Open Specific Invoice
+          navigate('/finance/debt', { state: { openDebtId: notif.relatedId } });
+      } else if (notif.type === 'schedule' && notif.relatedId) {
+          // Schedule -> Class Details
+          navigate(`/classes/${notif.relatedId}`);
+      } else if (notif.type === 'info' && notif.relatedId) {
+          // Info (usually New Lead) -> Leads Kanban -> Open Detail
+          navigate('/leads', { state: { openId: notif.relatedId } });
+      } else if (notif.type === 'success') {
+          // Just go to dashboard or relevant list
+          navigate('/');
+      }
+
+      // 3. Close dropdown
+      setShowNotifications(false);
   };
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val);
@@ -338,7 +357,7 @@ const Header: React.FC<HeaderProps> = ({ title }) => {
                                       return (
                                           <div 
                                             key={notif.id} 
-                                            onClick={() => handleNotificationClick(notif.id)}
+                                            onClick={() => handleNotificationClick(notif)}
                                             className={`p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer flex gap-3 ${notif.isRead ? 'opacity-60 grayscale-[0.3]' : 'bg-white dark:bg-[#1e293b]'}`}
                                           >
                                               <div className={`size-9 rounded-full shrink-0 flex items-center justify-center ${style.bg} ${style.color} border ${style.border}`}>

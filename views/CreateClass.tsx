@@ -8,7 +8,7 @@ import { useData } from '../context/DataContext';
 
 const CreateClass: React.FC = () => {
   const navigate = useNavigate();
-  const { addClass, calculateEndDate } = useData();
+  const { addClass, recalculateSchedule } = useData();
 
   // Form States
   const [className, setClassName] = useState('');
@@ -39,11 +39,11 @@ const CreateClass: React.FC = () => {
           const daysStr = sortedDays.join(' / ');
           const sessions = parseInt(totalSessions) || 0;
           
-          setCalculatedEndDate(calculateEndDate(startDate, sessions, daysStr));
+          setCalculatedEndDate(recalculateSchedule(startDate, sessions, daysStr));
       } else {
           setCalculatedEndDate('');
       }
-  }, [startDate, totalSessions, selectedDays, calculateEndDate]);
+  }, [startDate, totalSessions, selectedDays, recalculateSchedule]);
 
   const toggleDay = (day: string) => {
     if (selectedDays.includes(day)) {

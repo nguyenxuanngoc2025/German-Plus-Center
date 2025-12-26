@@ -17,6 +17,18 @@ export interface Lead {
   learningMode?: 'online' | 'offline'; // New field: Learning Mode Preference
 }
 
+// NEW: Formalized Session Structure
+export interface ClassSession {
+    id: string; // Unique ID (e.g., classId_date)
+    classId: string;
+    index: number; // Session Index (1, 2, 3...)
+    date: string; // ISO Date YYYY-MM-DD
+    dayOfWeek: string; // T2, T3...
+    isLocked: boolean; // Cannot be moved (Past or Attended)
+    isExtra: boolean; // Is this a makeup session?
+    note?: string;
+}
+
 export interface ClassItem {
   id: string;
   name: string;
@@ -37,7 +49,7 @@ export interface ClassItem {
   endDate?: string;   // ISO Date YYYY-MM-DD
   totalSessions?: number; // NEW: Total number of sessions for the course
   offDays?: string[]; // List of ISO dates where class is cancelled/shifted
-  extraSessions?: { date: string; note?: string }[]; // NEW: List of rescheduled/extra sessions (ISO DateTime)
+  extraSessions?: { date: string; note?: string }[]; // List of rescheduled/extra sessions (ISO DateTime)
 }
 
 export type AttendanceStatus = 'present' | 'excused' | 'unexcused';
@@ -177,6 +189,7 @@ export interface Notification {
     timestamp: string; // ISO string or relative time
     isRead: boolean;
     link?: string; // Optional deep link
+    relatedId?: string; // NEW: ID of the related object (Invoice ID, Class ID, Lead ID) for smart navigation
 }
 
 // Define granular permission keys

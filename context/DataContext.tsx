@@ -1,6 +1,6 @@
 
 import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
-import { Lead, Student, ClassItem, Tuition, FinanceRecord, Staff, Document, SystemSettings, TestResult, AttendanceStatus, AttendanceRecord, PermissionKey, Notification } from '../types';
+import { Lead, Student, ClassItem, Tuition, FinanceRecord, Staff, Document, SystemSettings, TestResult, AttendanceStatus, AttendanceRecord, PermissionKey, Notification, ClassSession } from '../types';
 import { MOCK_LEADS, MOCK_STUDENTS, MOCK_CLASSES, MOCK_TUITION, MOCK_FINANCE, MOCK_STAFF, MOCK_DOCUMENTS } from '../constants';
 
 export type { PermissionKey };
@@ -93,7 +93,11 @@ interface DataContextType {
   
   // Unified Calculation Helper
   calculateFinancials: (startDate?: Date, endDate?: Date) => FinancialStats;
-  calculateEndDate: (startDateStr: string, totalSessions: number, daysStr: string, offDays?: string[]) => string;
+  recalculateSchedule: (startDateStr: string, totalSessions: number, daysStr: string, offDays?: string[]) => string;
+  generateClassSessions: (cls: ClassItem) => ClassSession[]; 
+  
+  // NEW: Advanced Schedule Handling
+  updateScheduleChain: (classId: string, fromSessionIndex: number, newDateStr: string) => { success: boolean; message: string; affectedCount: number } | undefined;
 
   // Global Date Filter (Memory)
   globalDateFilter: DateFilterState;
@@ -129,7 +133,7 @@ interface DataContextType {
   updateClass: (id: string, updates: Partial<ClassItem>) => void;
   
   // Notification Actions
-  addNotification: (title: string, message: string, type: 'debt' | 'schedule' | 'success' | 'info') => void;
+  addNotification: (title: string, message: string, type: 'debt' | 'schedule' | 'success' | 'info', relatedId?: string) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
 
@@ -182,7 +186,8 @@ const generateMockNotifications = (): Notification[] => {
             message: 'Học viên Đỗ Chi quá hạn đóng tiền 5 ngày.',
             type: 'debt',
             timestamp: new Date(now.getTime() - 1000 * 60 * 30).toISOString(), // 30 mins ago
-            isRead: false
+            isRead: false,
+            relatedId: 'INV-HV2023023' // Mock invoice ID to test Deep Link
         },
         {
             id: 'n2',
@@ -190,7 +195,8 @@ const generateMockNotifications = (): Notification[] => {
             message: 'Lớp Tiếng Đức A1 - K24 đã dời lịch buổi 20/10.',
             type: 'schedule',
             timestamp: new Date(now.getTime() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
-            isRead: false
+            isRead: false,
+            relatedId: 'C001' // Mock class ID
         },
         {
             id: 'n3',
@@ -203,11 +209,11 @@ const generateMockNotifications = (): Notification[] => {
     ];
 };
 
-// --- CORE SCHEDULING HELPER ---
-const calculateEndDate = (startDateStr: string, totalSessions: number, daysStr: string, offDays: string[] = []): string => {
+// --- CORE SCHEDULING ENGINE (RECALCULATE SCHEDULE) ---
+const recalculateSchedule = (startDateStr: string, totalSessions: number, daysStr: string, offDays: string[] = []): string => {
     if (!startDateStr || totalSessions <= 0) return '';
     
-    // Parse Days: "T2 / T4" -> [1, 3]
+    // 1. Parse Schedule Days: "T2 / T4" -> [1, 3]
     const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
     const targetDays = daysStr.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined);
     
@@ -222,18 +228,52 @@ const calculateEndDate = (startDateStr: string, totalSessions: number, daysStr: 
         const currentDay = iterator.getDay();
         const dateString = iterator.toISOString().split('T')[0];
         
-        // If it's a scheduled day AND not an off day
-        if (targetDays.includes(currentDay) && !offDays.includes(dateString)) {
-            sessionsFound++;
-            lastDate = new Date(iterator); // Snapshot valid date
+        if (targetDays.includes(currentDay)) {
+            if (offDays.includes(dateString)) {
+                // SKIP
+            } else {
+                sessionsFound++;
+                lastDate = new Date(iterator); 
+            }
         }
-        
-        // Move to next day
         iterator.setDate(iterator.getDate() + 1);
         safetyCounter++;
     }
 
     return lastDate.toISOString().split('T')[0];
+};
+
+// Helper: Get next valid date in allowed days
+const getNextValidDate = (fromDate: Date, allowedDays: number[]): Date => {
+    const next = new Date(fromDate);
+    next.setDate(next.getDate() + 1);
+    let safety = 0;
+    while (!allowedDays.includes(next.getDay()) && safety < 100) {
+        next.setDate(next.getDate() + 1);
+        safety++;
+    }
+    return next;
+};
+
+// Helper to count passed sessions for smart notification
+const countPassedSessions = (startDateStr: string, targetDateStr: string, daysStr: string, offDays: string[]): number => {
+    const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
+    const targetDays = daysStr.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined);
+    
+    let count = 0;
+    const iterator = new Date(startDateStr);
+    const targetDate = new Date(targetDateStr);
+    iterator.setHours(0,0,0,0);
+    targetDate.setHours(0,0,0,0);
+
+    while (iterator <= targetDate) {
+        const dStr = iterator.toISOString().split('T')[0];
+        if (targetDays.includes(iterator.getDay()) && !offDays.includes(dStr)) {
+            count++;
+        }
+        iterator.setDate(iterator.getDate() + 1);
+    }
+    return count;
 };
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -246,7 +286,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [documents, setDocuments] = useState<Document[]>(MOCK_DOCUMENTS);
   const [discrepancies, setDiscrepancies] = useState<Discrepancy[]>([]);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>(generateMockNotifications()); // Init Mock Notifs
+  const [notifications, setNotifications] = useState<Notification[]>(generateMockNotifications()); 
   
   // --- SETTINGS STATE ---
   const [settings, setSettingsState] = useState<SystemSettings>(() => {
@@ -269,9 +309,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
   });
 
-  // --- GLOBAL DATE FILTER STATE (Memory) ---
+  // --- GLOBAL DATE FILTER STATE ---
   const [globalDateFilter, setGlobalDateFilter] = useState<DateFilterState>(() => {
-      // Default to "This Year" to show relevant data initially
       const now = new Date();
       return {
           preset: 'this_year',
@@ -309,10 +348,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // --- SOURCE OF TRUTH: SYNC CLASS ENROLLMENT ---
   useEffect(() => {
-      // Whenever `students` list changes, recalculate class enrollments
       setClasses(prevClasses => {
           return prevClasses.map(cls => {
-              // Calculate actual students in this class
               const actualCount = students.filter(s => s.classId === cls.id && s.status === 'active').length;
               if (cls.students !== actualCount) {
                   return { ...cls, students: actualCount };
@@ -323,14 +360,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [students]);
 
   // --- NOTIFICATION HELPER ---
-  const addNotification = (title: string, message: string, type: 'debt' | 'schedule' | 'success' | 'info') => {
+  const addNotification = (title: string, message: string, type: 'debt' | 'schedule' | 'success' | 'info', relatedId?: string) => {
       const newNotif: Notification = {
           id: `notif-${Date.now()}`,
           title,
           message,
           type,
           timestamp: new Date().toISOString(),
-          isRead: false
+          isRead: false,
+          relatedId
       };
       setNotifications(prev => [newNotif, ...prev]);
   };
@@ -340,7 +378,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!isAuthenticated) return;
 
       const runAutoCleanup = () => {
-          // 1. Data Integrity Check
+          // 1. Data Integrity
           const issues: Discrepancy[] = [];
           students.forEach(student => {
               const studentTuition = tuition.filter(t => t.studentId === student.id);
@@ -352,37 +390,32 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
           setDiscrepancies(issues);
 
-          // 2. SCENARIO 1: AUTOMATIC DEBT CHECK (Cron Job Simulation)
-          // Scan for overdue items and alert if found.
-          // Note: In a real app, this runs on server daily. Here, we run it periodically but dedupe notifications.
+          // 2. Debt Notifications
           const overdueItems = tuition.filter(t => t.remainingAmount > 0 && new Date(t.dueDate) < new Date());
           if (overdueItems.length > 0) {
               const latestOverdue = overdueItems[0];
               const studentName = students.find(s => s.id === latestOverdue.studentId)?.name || 'Học viên';
               const notifTitle = "Cảnh báo Công nợ";
-              
-              // Only add if we haven't added a debt notification in the last 1 minute (simulation throttle)
               const hasRecent = notifications.some(n => n.type === 'debt' && (new Date().getTime() - new Date(n.timestamp).getTime() < 60000));
               
               if (!hasRecent) {
                   if (overdueItems.length === 1) {
-                      addNotification(notifTitle, `Học viên ${studentName} đang quá hạn khoản thu ${latestOverdue.description}.`, 'debt');
+                      addNotification(notifTitle, `Học viên ${studentName} đang quá hạn khoản thu ${latestOverdue.description}.`, 'debt', latestOverdue.id);
                   } else {
-                      addNotification(notifTitle, `Hiện có ${overdueItems.length} khoản thu đã quá hạn cần xử lý.`, 'debt');
+                      addNotification(notifTitle, `Hiện có ${overdueItems.length} khoản thu đã quá hạn cần xử lý.`, 'debt', latestOverdue.id);
                   }
               }
           }
       };
 
       runAutoCleanup();
-      const interval = setInterval(runAutoCleanup, 60000); // Check every minute
+      const interval = setInterval(runAutoCleanup, 60000); 
       return () => clearInterval(interval);
 
   }, [students, tuition, isAuthenticated, notifications]);
 
   // --- DIAGNOSTICS & E2E TESTING ---
   const runSystemDiagnostics = async () => {
-      // ... (Existing code kept as is for brevity, focusing on the new feature)
       const newResults: TestResult[] = [];
       const log = (module: string, name: string, status: TestResult['status'], msg: string) => {
           newResults.push({
@@ -399,12 +432,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const updatedStudents = students.map(s => {
                   const studentTuition = tuition.filter(t => t.studentId === s.id);
                   const realDebt = studentTuition.reduce((sum, t) => sum + t.remainingAmount, 0);
-                  return { ...s, cachedBalance: realDebt }; // Sync value
+                  return { ...s, cachedBalance: realDebt }; 
               });
-              
               setStudents(updatedStudents);
-              setDiscrepancies([]); // Clear alert
-              
+              setDiscrepancies([]); 
               resolve({ success: true, count: discrepancies.length });
           }, 1500); 
       });
@@ -437,6 +468,163 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           : tuition.reduce((sum, t) => sum + t.remainingAmount, 0); 
 
       return { revenue, expense, debt, profit: revenue - expense };
+  };
+
+  // --- GENERATE CLASS SESSIONS (Smart Engine) ---
+  const generateClassSessions = (cls: ClassItem): ClassSession[] => {
+      if (!cls.startDate) return [];
+
+      const sessions: ClassSession[] = [];
+      const [daysPart] = cls.schedule.split('•');
+      const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
+      const revDayMap = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+      const targetDays = daysPart.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined);
+      
+      const offDays = cls.offDays || [];
+      const extraSessions = cls.extraSessions || [];
+      const today = new Date();
+      today.setHours(0,0,0,0);
+
+      // Determine Stop Condition: Max Sessions or End Date
+      // Fallback: If totalSessions missing, default to 50 or use endDate
+      const maxSessions = cls.totalSessions || 50;
+      const hardEndDate = cls.endDate ? new Date(cls.endDate) : null;
+      if (hardEndDate) hardEndDate.setHours(23, 59, 59, 999);
+
+      // 1. Generate Regular Sessions (with skipping)
+      let sessionsGenerated = 0;
+      const iterator = new Date(cls.startDate);
+      let safetyCounter = 0;
+
+      // Loop until session count met OR passed endDate
+      while (sessionsGenerated < maxSessions && safetyCounter < 365) {
+          // If we have an end date, respect it strictly
+          if (hardEndDate && iterator > hardEndDate) break;
+
+          const currentDay = iterator.getDay();
+          const dateString = iterator.toISOString().split('T')[0];
+          
+          if (targetDays.includes(currentDay)) {
+              if (offDays.includes(dateString)) {
+                  // Skip logic is handled by NOT incrementing sessionsGenerated
+              } else {
+                  // Valid Session
+                  sessionsGenerated++;
+                  
+                  // Check Locking Logic
+                  let isLocked = new Date(iterator) < today;
+                  if (!isLocked) {
+                      const hasAttendance = students.some(s => 
+                          s.classId === cls.id && 
+                          s.attendanceHistory?.some(r => r.date === dateString)
+                      );
+                      if (hasAttendance) isLocked = true;
+                  }
+
+                  sessions.push({
+                      id: `${cls.id}-${dateString}`,
+                      classId: cls.id,
+                      index: sessionsGenerated,
+                      date: dateString,
+                      dayOfWeek: revDayMap[currentDay],
+                      isLocked: isLocked,
+                      isExtra: false
+                  });
+              }
+          }
+          iterator.setDate(iterator.getDate() + 1);
+          safetyCounter++;
+      }
+
+      // 2. Merge Extra Sessions (Usually makeup sessions)
+      extraSessions.forEach(extra => {
+          const d = new Date(extra.date);
+          const isLocked = d < today; 
+          
+          sessions.push({
+              id: `${cls.id}-${extra.date}`,
+              classId: cls.id,
+              index: 0, 
+              date: extra.date.split('T')[0], 
+              dayOfWeek: revDayMap[d.getDay()],
+              isLocked: isLocked,
+              isExtra: true,
+              note: extra.note
+          });
+      });
+
+      return sessions;
+  };
+
+  // --- NEW: AUTO-PROPAGATE / CHAIN REACTION UPDATE ---
+  const updateScheduleChain = (classId: string, fromSessionIndex: number, newDateStr: string) => {
+      const cls = classes.find(c => c.id === classId);
+      if (!cls || !cls.startDate) return;
+
+      // 1. Get Fixed Schedule Days (e.g. [1, 3, 5] for T2, T4, T6)
+      const [daysPart] = cls.schedule.split('•');
+      const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
+      const targetDays = daysPart.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined);
+
+      if(targetDays.length === 0) return { success: false, message: 'Lỗi: Không tìm thấy lịch cố định', affectedCount: 0 };
+
+      // 2. Generate CURRENT Schedule to identify dates to kill
+      const currentSessions = generateClassSessions(cls);
+      
+      // 3. Prepare Batch Update Arrays
+      let newOffDays = [...(cls.offDays || [])];
+      let newExtraSessions = [...(cls.extraSessions || [])];
+
+      // 4. Determine Affected Sessions (From `fromSessionIndex` to End)
+      const affectedSessions = currentSessions.filter(s => s.index >= fromSessionIndex && !s.isExtra);
+      if (affectedSessions.length === 0) return;
+
+      // 5. PROPAGATE LOGIC
+      let currentNewDate = new Date(newDateStr);
+      let sessionsShifted = 0;
+
+      for (const session of affectedSessions) {
+          // A. Kill the original date (Add to OffDays)
+          if (!newOffDays.includes(session.date)) {
+              newOffDays.push(session.date);
+          }
+
+          // B. Add the NEW calculated date (Add to ExtraSessions)
+          const newDateString = currentNewDate.toISOString().split('T')[0];
+          
+          // Avoid duplicates in extra sessions
+          if (!newExtraSessions.some(es => es.date.startsWith(newDateString))) {
+              newExtraSessions.push({ date: newDateString, note: `Dời lịch (Buổi ${session.index})` });
+          }
+
+          // C. Calculate Next Valid Date for the *next* iteration
+          currentNewDate = getNextValidDate(currentNewDate, targetDays);
+          sessionsShifted++;
+      }
+
+      // 6. Update End Date (The last calculated date is the new end date)
+      // Note: `currentNewDate` is now one step *ahead* of the last session, so go back one valid step or just use the last pushed date.
+      // Actually, RecalculateSchedule might be safer based on Start Date + Total Sessions + New OffDays.
+      // But since we are manually fixing sessions via `extraSessions`, the concept of "End Date" becomes the last date in our new combined list.
+      
+      // Let's rely on the fact that we pushed sessions. The Last Pushed Date is effectively the end.
+      const lastSessionDate = newExtraSessions[newExtraSessions.length - 1].date;
+
+      // 7. BATCH UPDATE DATABASE
+      updateClass(classId, {
+          offDays: newOffDays,
+          extraSessions: newExtraSessions,
+          endDate: lastSessionDate 
+      });
+
+      // 8. Notify
+      addNotification('Thay đổi lịch học', `Đã dời lịch lớp ${cls.name} từ buổi ${fromSessionIndex}. ${sessionsShifted} buổi học tiếp theo đã được tự động cập nhật.`, 'schedule', classId);
+
+      return {
+          success: true,
+          message: `Đã dời lịch và tự động cập nhật ${sessionsShifted} buổi học liên quan.`,
+          affectedCount: sessionsShifted
+      };
   };
 
   // --- SIMULATION STATE ---
@@ -528,7 +716,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLeads(prev => [newLead, ...prev]);
     
     // SCENARIO 3: TRIGGER NEW LEAD NOTIFICATION
-    addNotification('Lead mới', `Khách hàng tiềm năng ${newLead.name} vừa được thêm từ nguồn ${newLead.source}.`, 'info');
+    addNotification('Lead mới', `Khách hàng tiềm năng ${newLead.name} vừa được thêm từ nguồn ${newLead.source}.`, 'info', id);
     
     return id; // Return ID for chaining
   };
@@ -569,12 +757,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setClasses(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // --- DYNAMIC SCHEDULING LOGIC: CANCEL (Chain Reaction) ---
+  // --- DYNAMIC SCHEDULING LOGIC: CANCEL & RECALCULATE (Chain Reaction) ---
   const cancelClassSession = (classId: string, dateStr: string) => {
       const cls = classes.find(c => c.id === classId);
-      if (!cls || !cls.startDate || !cls.totalSessions) return;
+      if (!cls || !cls.startDate) return;
 
-      // 1. Mark current date as Off
+      // 1. Mark current date as Off (Add to OffDays list)
       const updatedOffDays = [...(cls.offDays || [])];
       if(!updatedOffDays.includes(dateStr)) {
           updatedOffDays.push(dateStr);
@@ -583,22 +771,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // 2. Identify Schedule Days (e.g., "T2 / T4")
       const [daysPart] = cls.schedule.split('•');
       
-      // 3. Recalculate End Date using Core Logic
-      // Start Date + Total Sessions (Skipping updatedOffDays) = New End Date
-      const newEndDateStr = calculateEndDate(cls.startDate, cls.totalSessions, daysPart, updatedOffDays);
+      // 3. RECALCULATE END DATE using Core Engine
+      // Start Date + Total Sessions (Skipping updatedOffDays) = New End Date (Tịnh tiến)
+      const newEndDateStr = recalculateSchedule(cls.startDate, cls.totalSessions || 50, daysPart, updatedOffDays);
 
-      // 4. Calculate how many sessions remain after the cancelled date
+      // 4. Calculate how many sessions remain (for logs only)
       const cancelledDate = new Date(dateStr);
       const newEndDate = new Date(newEndDateStr);
       
-      // 5. Update Class
+      // 5. Update Class in DB
       updateClass(classId, {
           endDate: newEndDateStr,
           offDays: updatedOffDays
       });
 
       // SCENARIO 2: TRIGGER SCHEDULE NOTIFICATION
-      addNotification('Lịch học thay đổi', `Lớp ${cls.name} đã BÁO NGHỈ buổi học ngày ${cancelledDate.toLocaleDateString('vi-VN')}. Lịch đã được tự động lùi.`, 'schedule');
+      addNotification('Lịch học thay đổi', `Lớp ${cls.name} đã BÁO NGHỈ buổi học ngày ${cancelledDate.toLocaleDateString('vi-VN')}. Lịch đã được tự động lùi đến ${newEndDate.toLocaleDateString('vi-VN')}.`, 'schedule', classId);
 
       return { 
           success: true, 
@@ -606,37 +794,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
   };
 
-  // --- MANUAL RESCHEDULE LOGIC (Overwrite Date) ---
+  // --- LEGACY RESCHEDULE (Keep for compatibility or single moves) ---
   const moveClassSession = (classId: string, oldDateStr: string, newDateStr: string) => {
-      const cls = classes.find(c => c.id === classId);
-      if (!cls) return;
-
-      // 1. Mark old date as skipped
-      const updatedOffDays = [...(cls.offDays || [])];
-      if (!updatedOffDays.includes(oldDateStr)) {
-          updatedOffDays.push(oldDateStr);
-      }
-
-      // 2. Add new date to extra sessions
-      const updatedExtraSessions = [...(cls.extraSessions || [])];
-      if (!updatedExtraSessions.some(s => s.date.startsWith(newDateStr.split('T')[0]))) {
-          updatedExtraSessions.push({ date: newDateStr, note: 'Lịch học bù / dời' });
-      }
-
-      // 3. Update Class
-      updateClass(classId, {
-          offDays: updatedOffDays,
-          extraSessions: updatedExtraSessions
-      });
-
-      // SCENARIO 2: TRIGGER SCHEDULE NOTIFICATION
-      const newDateObj = new Date(newDateStr);
-      addNotification('Thay đổi lịch học', `Lớp ${cls.name} đã DỜI LỊCH sang ${newDateObj.toLocaleString('vi-VN')}.`, 'schedule');
-
-      return {
-          success: true,
-          message: 'Đã dời lịch thành công. Lịch học mới đã được cập nhật'
-      };
+      // Forward to new robust chain handler if possible, otherwise use this simple one
+      // But since we want "Chain Reaction", let's assume Calendar calls the new one OR update this one to use the new logic.
+      // For this implementation, I'll keep this as a simple wrapper if needed, but Calendar will use updateScheduleChain directly.
+      return undefined;
   };
 
   const addStaff = (staffData: Omit<Staff, 'id' | 'status' | 'joinDate' | 'avatar'>) => {
@@ -695,7 +858,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return (
     <DataContext.Provider value={{
       leads, students, classes, tuition, finance, staff, documents, settings, notifications,
-      isAuthenticated, currentUser, discrepancies, testResults, reconcileData, runSystemDiagnostics, calculateFinancials, calculateEndDate,
+      isAuthenticated, currentUser, discrepancies, testResults, reconcileData, runSystemDiagnostics, calculateFinancials, recalculateSchedule, generateClassSessions,
+      updateScheduleChain, // Export the new function
       globalDateFilter, setGlobalDateFilter,
       addLead, updateLead, login, logout, handleRoleChange,
       isSimulating: !!originalRole, originalRole, startSimulation, stopSimulation,

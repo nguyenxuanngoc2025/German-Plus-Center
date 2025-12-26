@@ -13,6 +13,10 @@ interface CalendarEvent {
   level: string;
   color: string;
   hasConflict?: boolean;
+  index?: number; // Added Index
+  mode: 'online' | 'offline'; // Added Mode
+  link?: string; // Added Link
+  location?: string; // Added Full Location
 }
 
 interface Props {
@@ -113,16 +117,11 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
 
   const generateSuggestions = (dateStr: string, busyTimeStr: string) => {
       // Simple suggestion logic: try +90m, +180m, -90m on the same day
-      // In a real app, this would recursively call checkScheduleConflict
       const busyHour = parseInt(busyTimeStr.split(':')[0]);
       const alts = [];
       
-      // Try earlier
       if (busyHour - 2 >= 7) alts.push(`${(busyHour - 2).toString().padStart(2,'0')}:00`);
-      // Try later
       if (busyHour + 2 <= 21) alts.push(`${(busyHour + 2).toString().padStart(2,'0')}:00`);
-      // Try next day same time
-      // alts.push(...) 
 
       setSuggestions(alts);
   };
@@ -152,8 +151,8 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
       const updated = new Date(`${newDate}T${newTime}`);
       
       // 3. Confirm and Execute
-      if (confirm(`Xác nhận dời lịch sang ${updated.toLocaleString('vi-VN')}?`)) {
-          onUpdate(updated); // This calls moveClassSession in parent
+      if (confirm(`Xác nhận dời lịch sang ${updated.toLocaleString('vi-VN')}? \n\nLƯU Ý: Hành động này sẽ tự động lùi toàn bộ lịch học phía sau!`)) {
+          onUpdate(updated); // This triggers updateScheduleChain in parent
       }
       
       setIsLoading(false);
@@ -161,7 +160,6 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
 
   const handleApplySuggestion = (time: string) => {
       setNewTime(time);
-      // Logic inside useEffect will re-check conflict automatically
   };
 
   const handleCancelSession = async () => {
@@ -210,8 +208,21 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
             <div className="relative z-10 text-white w-full pr-8">
                 <div className="flex items-center justify-between mb-1 opacity-90 text-xs font-bold uppercase tracking-wider">
                     <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[18px]">school</span>
-                        <span>{event.level} • {event.room}</span>
+                        <span className="material-symbols-outlined text-[18px]">
+                            {event.mode === 'online' ? 'language' : 'apartment'}
+                        </span>
+                        <span>{event.level}</span>
+                        <span className="opacity-50">|</span>
+                        {/* CONDITIONAL DISPLAY: Link vs Room */}
+                        {event.mode === 'online' ? (
+                            <a href={event.link || '#'} target="_blank" className="hover:underline hover:text-blue-100 flex items-center gap-1" title={event.link || 'Chưa có link'}>
+                                {event.link ? 'Link học Online' : 'Chưa có Link'}
+                                <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                            </a>
+                        ) : (
+                            <span>{event.room}</span>
+                        )}
+                        {event.index && <span className="bg-white/20 px-1.5 rounded ml-1">Buổi {event.index}</span>}
                     </div>
                     {event.hasConflict && (
                         <div className="flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded text-white">
@@ -366,7 +377,7 @@ const ClassEventModal: React.FC<Props> = ({ event, onClose, onUpdate, onAddStude
                                     className="col-span-2 mt-1 w-full bg-orange-500 hover:bg-orange-600 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-bold py-2.5 rounded-lg transition-all shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
                                     {isLoading && <span className="material-symbols-outlined animate-spin text-[18px]">sync</span>}
-                                    {isLoading ? 'Đang cập nhật hệ thống...' : 'Xác nhận Dời lịch'}
+                                    {isLoading ? 'Đang cập nhật hệ thống...' : 'Xác nhận Dời lịch (Lũy kế)'}
                                 </button>
                             </div>
                         ) : (

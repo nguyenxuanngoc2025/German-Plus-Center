@@ -363,7 +363,7 @@ const ClassDetails: React.FC = () => {
                                                             onClick={() => handleAttendanceChange(student.id, status as AttendanceStatus)}
                                                             className={`size-9 rounded-lg flex items-center justify-center font-bold text-sm transition-all border-2 ${
                                                                 todayAttendance[student.id] === status 
-                                                                ? (status === 'present' ? 'bg-green-600 text-white border-green-600 shadow-md' : status === 'excused' ? 'bg-orange-500 text-white border-orange-500 shadow-md' : 'bg-red-600 text-white border-red-600 shadow-md')
+                                                                ? (status === 'present' ? 'bg-green-600 text-white border-green-600 shadow-md' : status === 'excused' ? 'bg-orange-50 text-white border-orange-500 shadow-md' : 'bg-red-600 text-white border-red-600 shadow-md')
                                                                 : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-400'
                                                             }`}
                                                             title={status === 'present' ? 'Có mặt' : status === 'excused' ? 'Có phép' : 'Vắng'}
@@ -410,7 +410,7 @@ const ClassDetails: React.FC = () => {
                 </div>
 
                 {/* 4. Bottom Section: Calendar */}
-                <div className="h-full">
+                <div className="w-full min-h-[600px] bg-white dark:bg-[#1a202c] rounded-2xl shadow-sm">
                     <MiniClassCalendar 
                         classData={classData} 
                         onAttendanceClick={(date) => alert(`Chức năng điểm danh nhanh cho ngày ${new Date(date).toLocaleDateString()} đang được cập nhật.`)}

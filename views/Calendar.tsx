@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Header from '../components/Header';
 import { useData } from '../context/DataContext';
 import { ClassItem } from '../types';
@@ -16,13 +16,18 @@ interface CalendarEvent {
   teacher: string;
   room: string;
   level: string; // A1, A2...
-  status: 'active' | 'upcoming' | 'full'; // Added status for coloring
+  status: 'active' | 'upcoming' | 'full' | 'finished' | 'paused'; // Added status for coloring
   hasConflict?: boolean; // New collision flag
   color: string; // Added required color prop
+  index?: number; // Session Index
+  isLocked?: boolean; // Lock status
+  mode: 'online' | 'offline'; // NEW: To distinguish display
+  link?: string; // NEW: For online classes
+  location?: string; // NEW: Full location string
 }
 
 const Calendar: React.FC = () => {
-  const { classes, currentUser, enrollStudent, convertLeadToStudent, students, moveClassSession } = useData();
+  const { classes, currentUser, enrollStudent, convertLeadToStudent, students, updateScheduleChain, generateClassSessions } = useData();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month');
   
@@ -37,7 +42,20 @@ const Calendar: React.FC = () => {
   const [showStudentSelector, setShowStudentSelector] = useState(false);
   const [targetClassId, setTargetClassId] = useState<string | null>(null);
 
-  // --- LOGIC: GENERATE EVENTS & DETECT COLLISIONS ---
+  // DRAG & DROP STATE & PROCESSING
+  const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false); // NEW: Loading state for chain reaction
+  const [toastMessage, setToastMessage] = useState<string | null>(null); // NEW: Toast state
+
+  // Auto-hide toast
+  useEffect(() => {
+      if (toastMessage) {
+          const timer = setTimeout(() => setToastMessage(null), 5000);
+          return () => clearTimeout(timer);
+      }
+  }, [toastMessage]);
+
+  // --- LOGIC: GENERATE EVENTS USING SMART ENGINE ---
   const events = useMemo(() => {
     let generatedEvents: CalendarEvent[] = [];
     const today = new Date();
@@ -49,7 +67,6 @@ const Calendar: React.FC = () => {
     const isTeacher = currentUser?.role === 'teacher';
     
     // For Simulation/Demo: If student, pick the first student in DB as "Me" to find class
-    // In real app, currentUser.id would map to student.id
     const myClassId = isStudent ? students[0]?.classId : null;
 
     classes.forEach(cls => {
@@ -66,11 +83,8 @@ const Calendar: React.FC = () => {
         if (levelFilter && !cls.name.includes(levelFilter)) return;
         if (roomFilter && (cls.mode === 'online' ? 'Online' : 'Offline').indexOf(roomFilter) === -1 && !cls.location?.includes(roomFilter)) return;
 
-        // Parse Schedule
-        const [daysPart, timePart] = cls.schedule.split('•').map(s => s.trim());
-        const days = daysPart.split('/').map(d => d.trim());
-        const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
-        const targetDays = days.map(d => dayMap[d]).filter(d => d !== undefined);
+        // Parse Time from Schedule String
+        const [_, timePart] = cls.schedule.split('•').map(s => s.trim());
         const [startHour, startMinute] = timePart ? timePart.split(':').map(Number) : [18, 0];
         const durationMinutes = 90;
 
@@ -78,90 +92,57 @@ const Calendar: React.FC = () => {
         let roomDisplay = 'TBD';
         if (cls.mode === 'online') roomDisplay = 'Online';
         else if (cls.location) {
-            // Extract simplistic room name if possible, else generic
             if (cls.location.includes('Phòng')) roomDisplay = 'P.' + cls.location.split('Phòng')[1].trim().split(' ')[0];
-            else roomDisplay = 'P.101'; // Mock default room for demo collision
+            else roomDisplay = 'P.101'; // Mock default
         }
 
         // Determine Color
         let color = 'blue';
         if (cls.status === 'upcoming') color = 'emerald';
         else if (cls.status === 'full') color = 'orange';
+        else if (cls.status === 'paused') color = 'gray';
+        else if (cls.status === 'finished') color = 'slate';
 
-        // 1. Generate Regular Recurring Sessions
-        const classStartDate = cls.startDate ? new Date(cls.startDate) : rangeStart;
-        const classEndDate = cls.endDate ? new Date(cls.endDate) : rangeEnd;
-        // Adjust loop bounds to respect class duration
-        const loopStart = new Date(Math.max(rangeStart.getTime(), classStartDate.getTime()));
-        const loopEnd = new Date(Math.min(rangeEnd.getTime(), classEndDate.getTime()));
+        // USE THE GENERATOR ENGINE
+        const sessions = generateClassSessions(cls);
 
-        let loopDate = new Date(loopStart);
-        loopDate.setHours(0,0,0,0); 
-
-        while (loopDate <= loopEnd) {
-            const dateStr = loopDate.toISOString().split('T')[0];
+        sessions.forEach(session => {
+            const sessionStart = new Date(`${session.date}T${timePart || '18:00'}`);
             
-            // Check if day matches schedule AND is not an off day
-            if (targetDays.includes(loopDate.getDay()) && (!cls.offDays || !cls.offDays.includes(dateStr))) {
-                const start = new Date(loopDate);
-                start.setHours(startHour, startMinute, 0);
-                const end = new Date(start);
-                end.setMinutes(start.getMinutes() + durationMinutes);
+            // Basic Range Check
+            if (sessionStart < rangeStart || sessionStart > rangeEnd) return;
 
-                generatedEvents.push({
-                    id: `${cls.id}-${dateStr}`,
-                    classId: cls.id,
-                    title: `${cls.name}`,
-                    code: cls.code,
-                    start: start,
-                    end: end,
-                    teacher: cls.teacher,
-                    room: roomDisplay,
-                    level: cls.name.split(' ')[2] || 'A1',
-                    status: cls.status,
-                    color: color,
-                });
-            }
-            loopDate.setDate(loopDate.getDate() + 1);
-        }
+            const sessionEnd = new Date(sessionStart);
+            sessionEnd.setMinutes(sessionStart.getMinutes() + durationMinutes);
 
-        // 2. Generate Extra/Rescheduled Sessions
-        if (cls.extraSessions) {
-            cls.extraSessions.forEach((session, idx) => {
-                const sessionStart = new Date(session.date);
-                if (sessionStart >= rangeStart && sessionStart <= rangeEnd) {
-                    const sessionEnd = new Date(sessionStart);
-                    sessionEnd.setMinutes(sessionStart.getMinutes() + durationMinutes);
-
-                    generatedEvents.push({
-                        id: `${cls.id}-extra-${idx}`,
-                        classId: cls.id,
-                        title: `${cls.name} (Bù)`,
-                        code: cls.code,
-                        start: sessionStart,
-                        end: sessionEnd,
-                        teacher: cls.teacher,
-                        room: roomDisplay,
-                        level: cls.name.split(' ')[2] || 'A1',
-                        status: cls.status,
-                        color: 'purple', // Distinct color for rescheduled/extra
-                    });
-                }
+            generatedEvents.push({
+                id: session.id,
+                classId: cls.id,
+                title: session.index > 0 ? `${cls.name} (B.${session.index})` : `${cls.name} (Bù)`, // Add Index to Title
+                code: cls.code,
+                start: sessionStart,
+                end: sessionEnd,
+                teacher: cls.teacher,
+                room: roomDisplay,
+                level: cls.name.split(' ')[2] || 'A1',
+                status: cls.status,
+                color: session.isExtra ? 'purple' : color,
+                index: session.index,
+                isLocked: session.isLocked, // Lock property
+                mode: cls.mode, // Pass Mode
+                link: cls.link, // Pass Link
+                location: cls.location // Pass Full Location
             });
-        }
+        });
     });
 
     // 2. Detect Collisions (O(N^2) for simplicity in demo, optimize for prod)
-    // A conflict occurs if two events overlap in time AND share a Room or Teacher
     for (let i = 0; i < generatedEvents.length; i++) {
         for (let j = i + 1; j < generatedEvents.length; j++) {
             const e1 = generatedEvents[i];
             const e2 = generatedEvents[j];
 
-            // Check Time Overlap
             if (e1.start < e2.end && e1.end > e2.start) {
-                // Check Resource Overlap (Teacher OR Room)
-                // Ignore 'Online' room conflicts usually, but check Teacher
                 const isRoomConflict = e1.room !== 'Online' && e1.room === e2.room;
                 const isTeacherConflict = e1.teacher === e2.teacher;
 
@@ -174,7 +155,7 @@ const Calendar: React.FC = () => {
     }
 
     return generatedEvents;
-  }, [classes, teacherFilter, levelFilter, roomFilter, isMySchedule, currentUser, students]);
+  }, [classes, teacherFilter, levelFilter, roomFilter, isMySchedule, currentUser, students, generateClassSessions]);
 
   // --- NAVIGATION HANDLERS ---
   const handlePrev = () => {
@@ -214,6 +195,68 @@ const Calendar: React.FC = () => {
       setTargetClassId(null);
       // Close detail modal as well to refresh if needed, or keep open
       setSelectedEvent(null); 
+  };
+
+  // --- DRAG & DROP HANDLERS ---
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, event: CalendarEvent) => {
+      if (event.isLocked) {
+          e.preventDefault();
+          return;
+      }
+      setDraggedEvent(event);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', JSON.stringify(event));
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault(); // Necessary to allow dropping
+      e.dataTransfer.dropEffect = 'move';
+  };
+
+  // --- MODIFIED DROP HANDLER: ASYNC & CHAIN REACTION ---
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetDate: Date, targetTime?: string) => {
+      e.preventDefault();
+      if (!draggedEvent || draggedEvent.isLocked) return;
+
+      const oldDateStr = draggedEvent.start.toISOString().split('T')[0];
+      
+      // Construct new DateTime
+      let newDateObj = new Date(targetDate);
+      if (targetTime) {
+          const [hours, minutes] = targetTime.split(':').map(Number);
+          newDateObj.setHours(hours, minutes, 0);
+      } else {
+          // Keep original time if dropping on a month cell
+          newDateObj.setHours(draggedEvent.start.getHours(), draggedEvent.start.getMinutes(), 0);
+      }
+      
+      const newDateStr = newDateObj.toISOString();
+
+      // Avoid same day drop (unless time change)
+      if (oldDateStr === newDateObj.toISOString().split('T')[0] && !targetTime) {
+          setDraggedEvent(null);
+          return; 
+      }
+
+      if (window.confirm(`Xác nhận đổi lịch lớp ${draggedEvent.code} (Buổi ${draggedEvent.index || 'Bù'}) sang ${newDateObj.toLocaleString('vi-VN')}?`)) {
+          // 1. TRIGGER LOADING STATE
+          setIsProcessing(true);
+
+          // 2. SIMULATE API CALL / PROCESSING DELAY
+          await new Promise(resolve => setTimeout(resolve, 800));
+
+          // 3. EXECUTE UPDATE (CHAIN REACTION)
+          const result = updateScheduleChain(draggedEvent.classId, draggedEvent.index || 0, newDateStr);
+          
+          // 4. STOP LOADING & FEEDBACK
+          setIsProcessing(false);
+          
+          if (result?.success) {
+              setToastMessage(result.message);
+          }
+      }
+      
+      setDraggedEvent(null);
   };
 
   const getEventsForDay = (date: Date) => {
@@ -282,20 +325,22 @@ const Calendar: React.FC = () => {
                           <div 
                             key={idx} 
                             onClick={() => { setCurrentDate(d.date); setViewMode('day'); }}
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, d.date)}
                             className={`
                                 min-h-[140px] border-b border-r border-[#EDF2F7] dark:border-slate-700/50 p-2 transition-all cursor-pointer relative group 
                                 ${d.type !== 'current' ? 'text-slate-300 dark:text-slate-600' : ''}
                                 ${isSunday ? 'bg-[#FFF5F5] dark:bg-red-900/5' : 'hover:bg-[#F7FAFC] dark:hover:bg-slate-800'}
                             `}
                           >
-                              <div className="flex justify-between items-start mb-2">
+                              <div className="flex justify-between items-start mb-2 pointer-events-none">
                                 <span className={`
                                     text-xs flex items-center justify-center size-7 rounded-full transition-colors font-medium
                                     ${isToday ? 'border border-[#1e3a8a] text-[#1e3a8a] font-bold' : isSunday && d.type === 'current' ? 'text-[#E53E3E]' : ''}
                                 `}>
                                     {d.day}
                                 </span>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 pointer-events-auto">
                                     {/* Add Event Button (Visible on Hover) - Hide for Student */}
                                     {currentUser?.role !== 'student' && (
                                     <button 
@@ -315,31 +360,36 @@ const Calendar: React.FC = () => {
                                       // Updated Pastel Color Logic
                                       let bgClass = 'bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'; // Default Active (Pastel Blue)
                                       
-                                      if (evt.hasConflict) {
-                                          // Conflict: White background with Red Border
+                                      if (evt.isLocked) {
+                                          bgClass = 'bg-slate-50 text-slate-500 border border-slate-200 cursor-not-allowed opacity-80 grayscale'; // Locked/Past
+                                      } else if (evt.hasConflict) {
                                           bgClass = 'bg-white text-slate-700 border border-red-400 border-l-4 border-l-red-500 hover:bg-red-50 dark:bg-slate-800 dark:text-slate-200 dark:border-red-500'; 
                                       } else if (evt.color === 'purple') {
                                           bgClass = 'bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800'; 
                                       } else if (evt.status === 'upcoming') {
-                                          // Upcoming: Pastel Green
                                           bgClass = 'bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800'; 
                                       }
                                       
                                       return (
                                           <div 
                                             key={evt.id} 
+                                            draggable={!evt.isLocked}
+                                            onDragStart={(e) => handleDragStart(e, evt)}
                                             onClick={(e) => { e.stopPropagation(); setSelectedEvent(evt); }}
-                                            className={`px-2 py-1.5 rounded-md text-[10px] shadow-sm transition-all cursor-pointer flex flex-col gap-0.5 ${bgClass}`}
-                                            title={`${evt.title}\nGiáo viên: ${evt.teacher}\nPhòng: ${evt.room}`}
+                                            className={`px-2 py-1.5 rounded-md text-[10px] shadow-sm transition-all flex flex-col gap-0.5 ${bgClass} ${draggedEvent?.id === evt.id ? 'opacity-50 border-dashed' : ''} ${!evt.isLocked ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                                            title={`${evt.title}\nGiáo viên: ${evt.teacher}\nPhòng: ${evt.room}${evt.isLocked ? '\n(Đã khóa - Đã diễn ra hoặc đã điểm danh)' : ''}`}
                                           >
-                                              <div className="flex items-center justify-between w-full">
+                                              <div className="flex items-center justify-between w-full pointer-events-none">
                                                   <span className="font-semibold opacity-80 flex items-center gap-1">
                                                     {formatTime(evt.start)} - {formatTime(evt.end)}
                                                   </span>
-                                                  {evt.hasConflict && <span className="material-symbols-outlined text-[14px] text-red-500">warning</span>}
+                                                  <div className="flex gap-1">
+                                                      {evt.isLocked && <span className="material-symbols-outlined text-[10px] text-slate-400">lock</span>}
+                                                      {evt.hasConflict && <span className="material-symbols-outlined text-[14px] text-red-500">warning</span>}
+                                                  </div>
                                               </div>
-                                              <div className="font-bold truncate text-xs">
-                                                  {evt.code}
+                                              <div className="font-bold truncate text-xs pointer-events-none">
+                                                  {evt.title}
                                               </div>
                                           </div>
                                       );
@@ -392,11 +442,16 @@ const Calendar: React.FC = () => {
                   {/* Time Grid */}
                   <div className="relative min-h-[800px]">
                       {hours.map(h => (
-                          <div key={h} className="flex border-b border-slate-100 dark:border-slate-700/50 h-[60px]">
+                          <div 
+                            key={h} 
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, currentDate, `${h.toString().padStart(2, '0')}:00`)}
+                            className="flex border-b border-slate-100 dark:border-slate-700/50 h-[60px] group/hour"
+                          >
                               <div className="w-16 shrink-0 border-r border-slate-100 dark:border-slate-700/50 flex justify-center pt-2">
                                   <span className="text-xs font-bold text-slate-400">{h}:00</span>
                               </div>
-                              <div className="flex-1 relative">
+                              <div className="flex-1 relative group-hover/hour:bg-slate-50 dark:group-hover/hour:bg-white/5 transition-colors">
                                   {/* Grid lines */}
                                   <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-slate-50 dark:border-slate-800"></div>
                               </div>
@@ -417,7 +472,9 @@ const Calendar: React.FC = () => {
                           // Updated Timeline Colors (Pastel)
                           let containerClass = 'bg-blue-50 border-l-4 border-blue-500 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200';
                           
-                          if (evt.hasConflict) {
+                          if (evt.isLocked) {
+                              containerClass = 'bg-slate-50 border-l-4 border-slate-400 text-slate-500 cursor-not-allowed';
+                          } else if (evt.hasConflict) {
                               containerClass = 'bg-white border-2 border-red-400 text-slate-800 dark:bg-slate-800 dark:text-slate-200 dark:border-red-500';
                           } else if (evt.color === 'purple') {
                               containerClass = 'bg-purple-50 border-l-4 border-purple-500 text-purple-800 dark:bg-purple-900/20 dark:text-purple-200';
@@ -428,14 +485,17 @@ const Calendar: React.FC = () => {
                           return (
                               <div 
                                 key={evt.id}
+                                draggable={!evt.isLocked}
+                                onDragStart={(e) => handleDragStart(e, evt)}
                                 onClick={() => setSelectedEvent(evt)}
-                                className={`absolute left-20 right-4 rounded-lg px-4 py-2 shadow-sm cursor-pointer hover:brightness-95 transition-all flex justify-between items-center ${containerClass} ${evt.hasConflict ? 'z-20' : 'z-10'}`}
+                                className={`absolute left-20 right-4 rounded-lg px-4 py-2 shadow-sm hover:brightness-95 transition-all flex justify-between items-center ${containerClass} ${evt.hasConflict ? 'z-20' : 'z-10'} ${draggedEvent?.id === evt.id ? 'opacity-50 border-dashed' : ''} ${!evt.isLocked ? 'cursor-pointer' : ''}`}
                                 style={{ top: `${offsetTop}px`, height: `${height}px` }}
                               >
-                                  <div className="flex flex-col justify-center overflow-hidden">
+                                  <div className="flex flex-col justify-center overflow-hidden pointer-events-none">
                                       <div className="flex items-center gap-2">
                                           <span className="font-bold text-sm truncate">{evt.title}</span>
                                           {evt.hasConflict && <span className="material-symbols-outlined text-base text-red-500 animate-pulse">warning</span>}
+                                          {evt.isLocked && <span className="material-symbols-outlined text-sm text-slate-400">lock</span>}
                                       </div>
                                       <div className="text-xs opacity-80 flex items-center gap-2 truncate font-medium">
                                           <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">person</span> {evt.teacher}</span>
@@ -443,7 +503,7 @@ const Calendar: React.FC = () => {
                                           <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">meeting_room</span> {evt.room}</span>
                                       </div>
                                   </div>
-                                  <div className="text-right text-xs font-bold opacity-90 shrink-0">
+                                  <div className="text-right text-xs font-bold opacity-90 shrink-0 pointer-events-none">
                                       {formatTime(evt.start)} - {formatTime(evt.end)}
                                   </div>
                               </div>
@@ -459,9 +519,41 @@ const Calendar: React.FC = () => {
   const teachers = Array.from(new Set(classes.map(c => c.teacher)));
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display">
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark font-display relative">
       <Header title="Lịch học & Đào tạo" />
       
+      {/* PROCESSING OVERLAY */}
+      {isProcessing && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+              <div className="flex flex-col items-center bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700">
+                  <div className="relative">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                      <span className="absolute inset-0 flex items-center justify-center material-symbols-outlined text-primary text-[20px]">calendar_today</span>
+                  </div>
+                  <h3 className="mt-4 text-lg font-bold text-slate-800 dark:text-white">Đang xử lý lịch học...</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Đang tịnh tiến và cập nhật chuỗi sự kiện</p>
+              </div>
+          </div>
+      )}
+
+      {/* TOAST MESSAGE */}
+      {toastMessage && (
+          <div className="absolute bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300 max-w-sm">
+              <div className="flex items-start gap-3 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl shadow-slate-900/30 border border-slate-700">
+                  <div className="p-1 bg-green-500/20 rounded-full text-green-400 shrink-0">
+                      <span className="material-symbols-outlined text-[20px]">check</span>
+                  </div>
+                  <div>
+                      <h4 className="text-sm font-bold">Cập nhật thành công</h4>
+                      <p className="text-xs text-slate-300 mt-0.5 leading-snug">{toastMessage}</p>
+                  </div>
+                  <button onClick={() => setToastMessage(null)} className="text-slate-500 hover:text-white transition-colors">
+                      <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+              </div>
+          </div>
+      )}
+
       <main className="flex-1 overflow-hidden p-4 md:p-6 flex flex-col gap-4">
         
         {/* Controls Toolbar */}
@@ -548,9 +640,9 @@ const Calendar: React.FC = () => {
             event={selectedEvent} 
             onClose={() => setSelectedEvent(null)}
             onUpdate={(updatedDate) => {
-                const result = moveClassSession(selectedEvent.classId, selectedEvent.start.toISOString().split('T')[0], updatedDate.toISOString());
+                const result = updateScheduleChain(selectedEvent.classId, selectedEvent.index || 0, updatedDate.toISOString().split('T')[0] + 'T' + selectedEvent.start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
                 if(result?.success) {
-                    alert(result.message);
+                    setToastMessage(result.message);
                     setSelectedEvent(null);
                 }
             }}
