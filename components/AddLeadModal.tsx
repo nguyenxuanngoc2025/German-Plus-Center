@@ -38,8 +38,12 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111318]/60 p-4 backdrop-blur-sm transition-opacity duration-300">
-      <div className="relative w-full max-w-[800px] flex flex-col bg-white dark:bg-[#1e293b] rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden my-auto animate-in fade-in zoom-in duration-200 max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+      
+      {/* Modal Card: Full screen on mobile, Centered card on Desktop */}
+      <div className="relative w-full sm:max-w-[800px] h-full sm:h-auto sm:max-h-[90vh] flex flex-col bg-white dark:bg-[#1e293b] sm:rounded-xl shadow-2xl border-t sm:border border-slate-200 dark:border-slate-700 overflow-hidden animate-in slide-in-from-bottom-full sm:zoom-in duration-200">
+        
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-[#1e293b] shrink-0">
           <div className="flex flex-col">
@@ -50,12 +54,12 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ onClose }) => {
             <p className="text-slate-500 dark:text-slate-400 text-sm font-normal leading-normal pt-1">Nhập thông tin khách hàng tiềm năng vào hệ thống.</p>
           </div>
           <button onClick={onClose} className="group p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-            <span className="material-symbols-outlined text-slate-500 dark:text-slate-400 group-hover:text-red-500 dark:group-hover:text-red-400">close</span>
+            <span className="material-symbols-outlined text-2xl text-slate-500 dark:text-slate-400 group-hover:text-red-500 dark:group-hover:text-red-400">close</span>
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+        <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar bg-slate-50/30 dark:bg-[#1e293b]">
           <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-5">
               <h4 className="text-slate-900 dark:text-white text-base font-semibold border-l-4 border-secondary pl-3">Thông tin cá nhân</h4>
@@ -163,7 +167,7 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ onClose }) => {
                         value={formData.source}
                         onChange={(e) => setFormData({...formData, source: e.target.value})}
                     >
-                      <option disabled selected value="">Chọn nguồn tiếp cận</option>
+                      <option disabled value="">Chọn nguồn tiếp cận</option>
                       <option value="Facebook Ads">Facebook Ads</option>
                       <option value="Website">Website German Plus</option>
                       <option value="Giới thiệu">Giới thiệu (Referral)</option>
@@ -200,12 +204,12 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ onClose }) => {
               </div>
             </div>
             
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-700 mt-auto">
-                <button type="button" onClick={onClose} className="flex items-center justify-center px-5 h-10 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 focus:ring-2 focus:ring-slate-200 transition-all">
+            {/* Footer - Pushed to bottom on mobile */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-700 mt-auto safe-area-pb">
+                <button type="button" onClick={onClose} className="flex-1 sm:flex-none flex items-center justify-center px-5 h-12 sm:h-10 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 focus:ring-2 focus:ring-slate-200 transition-all">
                     Hủy bỏ
                 </button>
-                <button type="submit" className="flex items-center justify-center gap-2 px-5 h-10 rounded-lg bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white text-sm font-medium shadow-sm hover:shadow-md focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-all">
+                <button type="submit" className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 h-12 sm:h-10 rounded-lg bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white text-sm font-bold shadow-sm hover:shadow-md focus:ring-2 focus:ring-primary/40 focus:ring-offset-1 transition-all">
                     <span className="material-symbols-outlined text-[18px]">save</span>
                     Lưu thông tin
                 </button>

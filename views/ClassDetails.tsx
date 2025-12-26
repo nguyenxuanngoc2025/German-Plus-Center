@@ -12,7 +12,7 @@ import { AttendanceStatus } from '../types';
 const ClassDetails: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { classes, students, leads, enrollStudent, convertLeadToStudent, removeStudentFromClass, saveAttendance, updateStudentNote, hasPermission } = useData();
+  const { classes, students, enrollStudent, convertLeadToStudent, removeStudentFromClass, saveAttendance, updateStudentNote, hasPermission, generateClassSessions } = useData();
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
@@ -26,7 +26,23 @@ const ClassDetails: React.FC = () => {
     return students.filter(s => s.classId === classData.id);
   }, [students, classData.id]);
 
-  // Attendance State for "Today"
+  // Generate sessions to calculate total past sessions correctly
+  const classSessions = useMemo(() => {
+      return generateClassSessions(classData);
+  }, [classData, generateClassSessions]);
+
+  // Logic: Total Past Sessions (Sessions that have happened or marked as finished)
+  const totalPastSessions = useMemo(() => {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      // Count sessions where date < today OR session is marked completed in any way
+      return classSessions.filter(s => {
+          const sDate = new Date(s.date);
+          return sDate <= today || (s as any).status === 'finished';
+      }).length;
+  }, [classSessions]);
+
+  // Attendance State for "Today" (or selected date)
   const [todayAttendance, setTodayAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [historyModalStudent, setHistoryModalStudent] = useState<string | null>(null);
 
@@ -54,8 +70,23 @@ const ClassDetails: React.FC = () => {
 
   const handleSaveAttendance = () => {
       const today = new Date().toISOString().split('T')[0];
+      
+      const markedCount = Object.keys(todayAttendance).length;
+      const totalStudents = classStudents.length;
+
+      // VALIDATION: Check if any student is left "Pending"
+      if (markedCount < totalStudents) {
+          const missingCount = totalStudents - markedCount;
+          const confirmMsg = `Bạn đang để trống điểm danh cho ${missingCount} học viên.\nDữ liệu chuyên cần sẽ không được cập nhật cho các bạn này.\n\nBạn có chắc chắn muốn lưu?`;
+          if (!window.confirm(confirmMsg)) {
+              return; 
+          }
+      }
+
       const result = saveAttendance(classData.id, today, todayAttendance);
-      alert(result.message);
+      if (result.success) {
+          alert(result.message);
+      }
   };
 
   const handleOverrideAttendance = (studentId: string, date: string, newStatus: AttendanceStatus) => {
@@ -82,54 +113,17 @@ const ClassDetails: React.FC = () => {
     }
   };
 
-  // Logic: Total Past Sessions based on Schedule & Start Date
-  const totalPastSessions = useMemo(() => {
-      if (!classData.startDate) return 0;
-      
-      const start = new Date(classData.startDate);
-      const today = new Date();
-      // Remove time part
-      today.setHours(0,0,0,0);
-      start.setHours(0,0,0,0);
-
-      if (today < start) return 0;
-
-      // Parse schedule days e.g. "T2 / T4"
-      const [daysPart] = classData.schedule.split('•');
-      const dayMap: Record<string, number> = { 'CN': 0, 'T2': 1, 'T3': 2, 'T4': 3, 'T5': 4, 'T6': 5, 'T7': 6 };
-      const targetDays = daysPart.split('/').map(d => dayMap[d.trim()]).filter(d => d !== undefined);
-
-      let count = 0;
-      let loopDate = new Date(start);
-      while (loopDate <= today) {
-          if (targetDays.includes(loopDate.getDay())) {
-              count++;
-          }
-          loopDate.setDate(loopDate.getDate() + 1);
-      }
-      return count;
-  }, [classData]);
-
   // Helper: Calculate Dynamic Class Progress
   const calculateClassProgress = () => {
       if (!classData.startDate || !classData.endDate) return classData.progress; 
-      
-      const start = new Date(classData.startDate).getTime();
-      const end = new Date(classData.endDate).getTime();
-      const now = new Date().getTime();
-
-      if (now < start) return 0;
-      if (now > end) return 100;
-
-      const totalDuration = end - start;
-      const elapsed = now - start;
-      return Math.round((elapsed / totalDuration) * 100);
+      const total = classData.totalSessions || 24;
+      return Math.min(100, Math.round((totalPastSessions / total) * 100));
   };
 
-  const dynamicProgress = useMemo(() => calculateClassProgress(), [classData]);
+  const dynamicProgress = useMemo(() => calculateClassProgress(), [classData, totalPastSessions]);
   const formatCurrency = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
-  // Helper to get formatted Level (Fallback if not set)
+  // Helper to get formatted Level
   const classLevel = classData.level || classData.name.split(' ')[2] || 'A1';
 
   return (
@@ -139,7 +133,7 @@ const ClassDetails: React.FC = () => {
       <main className="flex-1 overflow-y-auto scroll-smooth">
         <div className="flex flex-col gap-0">
             
-            {/* 1. NEW: CLASS INFORMATION HEADER (Full Width Strip) */}
+            {/* 1. NEW: CLASS INFORMATION HEADER */}
             <div className="bg-white dark:bg-[#1a202c] border-b border-slate-200 dark:border-slate-700 shadow-sm relative z-10">
                 <div className="px-6 lg:px-10 py-5">
                     {/* Top Row: Name & Actions */}
@@ -316,9 +310,16 @@ const ClassDetails: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-base">
                                 {classStudents.map((student, idx) => {
+                                    // Calculate Attendance:
+                                    // Only count sessions where a record exists. Pending days are not counted.
                                     const presentCount = student.attendanceHistory?.filter(h => h.status === 'present').length || 0;
-                                    const absenceRate = totalPastSessions > 0 ? 1 - (presentCount / totalPastSessions) : 0;
-                                    const isWarning = absenceRate > 0.2; 
+                                    const recordedSessionsCount = student.attendanceHistory?.length || 0;
+                                    
+                                    // Avoid division by zero if no attendance taken yet
+                                    const denominator = recordedSessionsCount > 0 ? recordedSessionsCount : 1;
+                                    const attendanceRate = recordedSessionsCount > 0 ? Math.round((presentCount / denominator) * 100) : 100;
+                                    
+                                    const isWarning = attendanceRate < 80 && recordedSessionsCount > 2; 
                                     const score1 = student.scores?.[0]?.value || '-';
                                     const score2 = student.scores?.[1]?.value || '-';
 
@@ -344,11 +345,12 @@ const ClassDetails: React.FC = () => {
                                                     className={`inline-flex flex-col items-center cursor-pointer hover:scale-105 transition-transform px-3 py-1.5 rounded-lg border ${isWarning ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-white text-slate-700'}`}
                                                     title="Click xem chi tiết"
                                                 >
-                                                    <span className="text-sm font-extrabold">{presentCount} / {totalPastSessions}</span>
+                                                    {/* Show Present / Recorded */}
+                                                    <span className="text-sm font-extrabold">{presentCount} / {recordedSessionsCount}</span>
                                                     <div className="w-20 h-1.5 bg-slate-200 rounded-full mt-1.5 overflow-hidden">
                                                         <div 
                                                             className={`h-full ${isWarning ? 'bg-red-500' : 'bg-green-500'}`} 
-                                                            style={{width: `${totalPastSessions > 0 ? (presentCount/totalPastSessions)*100 : 100}%`}}
+                                                            style={{width: `${attendanceRate}%`}}
                                                         ></div>
                                                     </div>
                                                 </div>
@@ -361,11 +363,15 @@ const ClassDetails: React.FC = () => {
                                                         <button 
                                                             key={status}
                                                             onClick={() => handleAttendanceChange(student.id, status as AttendanceStatus)}
-                                                            className={`size-9 rounded-lg flex items-center justify-center font-bold text-sm transition-all border-2 ${
-                                                                todayAttendance[student.id] === status 
-                                                                ? (status === 'present' ? 'bg-green-600 text-white border-green-600 shadow-md' : status === 'excused' ? 'bg-orange-50 text-white border-orange-500 shadow-md' : 'bg-red-600 text-white border-red-600 shadow-md')
-                                                                : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-400'
-                                                            }`}
+                                                            className={`size-9 rounded-lg flex items-center justify-center font-bold text-sm transition-all shadow-sm border ${
+                                                                todayAttendance[student.id] === status
+                                                                ? (status === 'present' 
+                                                                    ? 'bg-green-600 border-green-600 text-white shadow-green-200 dark:shadow-none scale-105' 
+                                                                    : status === 'excused' 
+                                                                        ? 'bg-orange-500 border-orange-500 text-white shadow-orange-200 dark:shadow-none scale-105' 
+                                                                        : 'bg-red-600 border-red-600 text-white shadow-red-200 dark:shadow-none scale-105')
+                                                                : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                                            } active:scale-95`}
                                                             title={status === 'present' ? 'Có mặt' : status === 'excused' ? 'Có phép' : 'Vắng'}
                                                         >
                                                             {status === 'present' ? 'P' : status === 'excused' ? 'CP' : 'KP'}
@@ -462,10 +468,10 @@ const ClassDetails: React.FC = () => {
                                       <button 
                                           key={status}
                                           onClick={() => handleOverrideAttendance(historyModalStudent, record.date, status as AttendanceStatus)}
-                                          className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all border-2 ${
+                                          className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all border ${
                                               record.status === status 
-                                              ? (status === 'present' ? 'bg-green-100 text-green-700 border-green-200' : status === 'excused' ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-red-100 text-red-700 border-red-200')
-                                              : 'bg-white text-slate-400 border-transparent hover:bg-slate-100'
+                                              ? (status === 'present' ? 'bg-green-600 border-green-600 text-white' : status === 'excused' ? 'bg-orange-500 border-orange-500 text-white' : 'bg-red-600 border-red-600 text-white')
+                                              : 'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                                           }`}
                                       >
                                           {status === 'present' ? 'Có mặt' : status === 'excused' ? 'Có phép' : 'Vắng'}

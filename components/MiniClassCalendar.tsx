@@ -19,7 +19,7 @@ interface CalendarEvent {
   teacher: string;
   teacherAvatar?: string;
   room: string;
-  status: 'active' | 'upcoming' | 'full' | 'finished' | 'paused';
+  status: 'active' | 'upcoming' | 'full' | 'finished' | 'paused' | 'incomplete' | 'missed';
   color: string;
   index?: number;
   isLocked?: boolean;
@@ -71,11 +71,16 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
       }
     };
     const handleScroll = () => setPopup(prev => ({ ...prev, visible: false }));
+    const handleEsc = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') setPopup(prev => ({ ...prev, visible: false }));
+    };
 
     document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleEsc);
     window.addEventListener('scroll', handleScroll, true); 
     return () => {
         document.removeEventListener('mousedown', handleClickOutside);
+        window.removeEventListener('keydown', handleEsc);
         window.removeEventListener('scroll', handleScroll, true);
     };
   }, []);
@@ -113,7 +118,7 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
                 teacher: classData.teacher,
                 teacherAvatar: classData.teacherAvatar,
                 room: classData.mode === 'online' ? (classData.link || 'Online') : (classData.location?.split(',')[0] || 'Tại trung tâm'),
-                status: classData.status,
+                status: (session as any).status || classData.status,
                 color: session.isExtra ? 'purple' : 'blue',
                 index: session.index,
                 isLocked: session.isLocked,
@@ -127,54 +132,46 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
     return generatedEvents;
   }, [classData, currentDate, generateClassSessions]);
 
-  // --- SMART POSITIONING LOGIC ---
+  // --- SMART POSITIONING ALGORITHM (Consistent with Calendar) ---
   const handleEventClick = (e: React.MouseEvent, evt: CalendarEvent, colIndex: number) => {
       e.stopPropagation();
       const target = e.currentTarget as HTMLElement;
       const rect = target.getBoundingClientRect();
-      const viewportW = window.innerWidth;
-      const viewportH = window.innerHeight;
+      const VIEWPORT_W = window.innerWidth;
+      const VIEWPORT_H = window.innerHeight;
       
-      const popoverW = 320; 
-      const popoverH = 340;
-      const gap = 8;
+      const POPUP_WIDTH = 340; 
+      const POPUP_HEIGHT_EST = 380;
+      const GAP = 12;
       
       let x = 0;
       let y = 0;
 
       // 1. HORIZONTAL
-      let placeRight = true;
-      if (colIndex >= 5) { // Sat, Sun force left
-          placeRight = false;
-      } else if (colIndex <= 1) { // Mon, Tue force right
-          placeRight = true;
+      if (rect.right + GAP + POPUP_WIDTH > VIEWPORT_W) {
+          x = rect.left - POPUP_WIDTH - GAP;
       } else {
-          // Check right space
-          if (rect.right + gap + popoverW > viewportW) placeRight = false;
+          x = rect.right + GAP;
       }
 
-      if (placeRight) {
-          x = rect.right + gap;
+      // Mobile check
+      if (VIEWPORT_W < 768) {
+          x = (VIEWPORT_W - POPUP_WIDTH) / 2;
+          if (x < 10) x = 10;
       } else {
-          x = rect.left - popoverW - gap;
+          if (x < 10) x = 10;
       }
 
-      // 2. VERTICAL
+      // 2. VERTICAL (Containment)
       y = rect.top; // Default: Top Align
 
       // Check Bottom Overflow
-      if (y + popoverH > viewportH) {
-          y = rect.bottom - popoverH;
+      if (y + POPUP_HEIGHT_EST > VIEWPORT_H) {
+          y = VIEWPORT_H - POPUP_HEIGHT_EST - GAP;
       }
 
       // Check Top Overflow (Header approx 80px)
-      if (y < 80) {
-          y = 80 + 10;
-      }
-
-      // Boundary Safety
-      if (x < 10) x = 10;
-      if (x + popoverW > viewportW) x = viewportW - popoverW - 10;
+      if (y < GAP) y = GAP;
 
       setPopup({ visible: true, x, y, event: evt });
   };
@@ -316,12 +313,23 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
                             <div className="flex flex-1 flex-col gap-1.5 min-h-0">
                                 {dayEvents.map(evt => {
                                     const isOnline = evt.mode === 'online';
+                                    const isIncomplete = evt.status === 'incomplete';
+                                    const isFinished = evt.status === 'finished';
                                     
                                     // Refined Soft Colors
-                                    const cardBg = isOnline ? 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/30' : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30';
-                                    const borderColor = isOnline ? 'border-orange-300' : 'border-blue-300';
-                                    const textColor = isOnline ? 'text-orange-700 dark:text-orange-200' : 'text-blue-700 dark:text-blue-200';
-                                    const dotColor = isOnline ? 'bg-orange-400' : 'bg-blue-500';
+                                    let cardBg, borderColor, textColor, dotColor;
+
+                                    if (isIncomplete) {
+                                        cardBg = 'bg-slate-100 dark:bg-slate-800 bg-[linear-gradient(45deg,rgba(0,0,0,0.05)_25%,transparent_25%,transparent_50%,rgba(0,0,0,0.05)_50%,rgba(0,0,0,0.05)_75%,transparent_75%,transparent)] bg-[length:10px_10px]';
+                                        borderColor = 'border-slate-300 dark:border-slate-600';
+                                        textColor = 'text-slate-600 dark:text-slate-400';
+                                        dotColor = 'bg-slate-400';
+                                    } else {
+                                        cardBg = isOnline ? 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/30' : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30';
+                                        borderColor = isOnline ? 'border-orange-300' : 'border-blue-300';
+                                        textColor = isOnline ? 'text-orange-700 dark:text-orange-200' : 'text-blue-700 dark:text-blue-200';
+                                        dotColor = isOnline ? 'bg-orange-400' : 'bg-blue-500';
+                                    }
 
                                     return (
                                         <React.Fragment key={evt.id}>
@@ -341,10 +349,12 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
                                                     e.stopPropagation();
                                                     handleEventClick(e, evt, colIndex);
                                                 }}
-                                                className={`hidden lg:block w-full text-left border-l-[3px] ${borderColor} ${cardBg} rounded-r-md px-2 py-1.5 transition-all shadow-sm hover:shadow group/card relative z-10 shrink-0 pointer-events-auto`}
+                                                className={`hidden lg:block w-full text-left border-l-[3px] ${borderColor} ${cardBg} rounded-r-md px-2 py-1.5 transition-all shadow-sm hover:shadow group/card relative z-10 shrink-0 pointer-events-auto ${isFinished ? 'opacity-70 grayscale-[0.3]' : ''}`}
                                             >
-                                                <div className={`text-[11px] font-bold ${textColor} leading-tight whitespace-normal break-words`}>
-                                                    {evt.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} {evt.code}
+                                                <div className={`text-[11px] font-bold ${textColor} leading-tight whitespace-normal break-words flex items-center justify-between`}>
+                                                    <span>{evt.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} {evt.code}</span>
+                                                    {isFinished && <span className="material-symbols-outlined text-[14px] text-green-600 font-bold">check_circle</span>}
+                                                    {isIncomplete && <span className="material-symbols-outlined text-[14px] text-orange-500 font-bold" title="Chưa đủ">warning</span>}
                                                 </div>
                                                 {evt.isExtra && (
                                                     <span className="absolute top-0 right-0 size-1.5 bg-purple-400 rounded-full -mt-0.5 -mr-0.5 ring-1 ring-white"></span>
@@ -379,6 +389,8 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
                               {popup.event.mode}
                           </span>
                           {popup.event.index && <span className="text-xs font-bold text-slate-400">Buổi {popup.event.index}</span>}
+                          {popup.event.status === 'finished' && <span className="text-xs font-bold text-green-600 flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">check_circle</span> Đã học</span>}
+                          {popup.event.status === 'incomplete' && <span className="text-xs font-bold text-orange-600 flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">warning</span> Chưa đủ</span>}
                       </div>
                       <h4 className="font-bold text-slate-900 dark:text-white text-base leading-tight">{popup.event.title}</h4>
                   </div>
@@ -426,10 +438,10 @@ const MiniClassCalendar: React.FC<Props> = ({ classData, onAttendanceClick }) =>
                       {onAttendanceClick && (
                           <button 
                               onClick={() => { onAttendanceClick(popup.event!.start.toISOString()); setPopup(prev => ({...prev, visible: false})); }}
-                              className="col-span-2 flex items-center justify-center gap-2 py-2.5 bg-primary text-white text-sm font-bold rounded-xl shadow-md shadow-blue-500/20 hover:bg-primary-dark transition-all active:scale-[0.98]"
+                              className={`col-span-2 flex items-center justify-center gap-2 py-2.5 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-[0.98] ${popup.event.status === 'incomplete' ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/20' : 'bg-primary hover:bg-primary-dark shadow-blue-500/20'}`}
                           >
                               <span className="material-symbols-outlined text-[18px]">fact_check</span>
-                              Điểm danh
+                              {popup.event.status === 'finished' ? 'Xem điểm danh' : 'Điểm danh'}
                           </button>
                       )}
                       <button 

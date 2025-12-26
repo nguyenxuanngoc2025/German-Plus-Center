@@ -48,12 +48,12 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
   const cleanPhone = formData.phone.replace(/\D/g, '');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6" role="dialog" aria-modal="true">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
       
-      {/* Modal Content */}
-      <div className="relative bg-white dark:bg-[#1a2230] w-full max-w-6xl rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-200 border border-gray-100/20">
+      {/* Modal Content - Adaptive: Fullscreen on mobile, Rounded Card on Desktop */}
+      <div className="relative bg-white dark:bg-[#1a2230] w-full sm:max-w-6xl h-full sm:h-auto sm:max-h-[92vh] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden transform transition-all animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-10 fade-in duration-300 border-t sm:border border-gray-100/20">
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a2230] shrink-0 z-10">
@@ -90,14 +90,17 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                     Portal Học viên
                 </a>
             )}
-            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors">
-              <span className="material-symbols-outlined">close</span>
+            <button 
+                onClick={onClose} 
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[24px]">close</span>
             </button>
           </div>
         </div>
 
         {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto bg-gray-50/50 dark:bg-[#101622] p-6 md:p-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto bg-gray-50/50 dark:bg-[#101622] p-4 sm:p-6 md:p-8 custom-scrollbar">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
             {/* LEFT COLUMN */}
@@ -121,16 +124,16 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                       <span className="material-symbols-outlined text-[18px]">location_on</span> {formData.location}
                     </p>
                     <div className="mt-4 flex flex-wrap justify-center sm:justify-start gap-3">
-                      <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark active:bg-primary-active active:shadow-inner shadow-sm shadow-primary/30 transition-all">
-                        <span className="material-symbols-outlined text-[18px]">edit_square</span>
+                      <button className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-dark active:bg-primary-active active:shadow-inner shadow-sm shadow-primary/30 transition-all">
+                        <span className="material-symbols-outlined text-[20px]">edit_square</span>
                         Chỉnh sửa hồ sơ
                       </button>
                       <a 
                         href={`tel:${cleanPhone}`}
                         title={`Gọi cho ${formData.name}`}
-                        className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-slate-900 dark:text-white rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-slate-900 dark:text-white rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                       >
-                        <span className="material-symbols-outlined text-[18px]">call</span>
+                        <span className="material-symbols-outlined text-[20px]">call</span>
                         Gọi điện
                       </a>
                       {/* Zalo Button */}
@@ -139,18 +142,10 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                         target="_blank"
                         rel="noreferrer"
                         title={`Chat Zalo với ${formData.name}`}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 rounded-lg text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 rounded-lg text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
                       >
                         <span className="font-bold text-[14px]">Zalo</span>
                         Chat Zalo
-                      </a>
-                      <a 
-                        href={`mailto:${formData.email}`}
-                        title="Gửi email"
-                        className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-slate-900 dark:text-white rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">text_snippet</span>
-                        Email
                       </a>
                     </div>
                   </div>
@@ -166,23 +161,23 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Họ và tên</label>
-                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm" type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm h-10 px-3" type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Email</label>
-                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm" type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm h-10 px-3" type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Số điện thoại</label>
-                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm" type="tel" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} />
+                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm h-10 px-3" type="tel" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Zalo</label>
-                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm" type="tel" value={formData.zalo} onChange={(e) => setFormData({...formData, zalo: e.target.value})} />
+                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm h-10 px-3" type="tel" value={formData.zalo} onChange={(e) => setFormData({...formData, zalo: e.target.value})} />
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Địa chỉ</label>
-                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm" type="text" value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} />
+                    <input className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm h-10 px-3" type="text" value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} />
                   </div>
                 </div>
               </div>
@@ -193,9 +188,9 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                 <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100 dark:border-gray-700">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-purple-600">lock_person</span>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Tài khoản Portal (Dành cho Admin)</h3>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Tài khoản Portal</h3>
                   </div>
-                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-gray-700 text-slate-500 dark:text-gray-400 text-xs font-medium">Quyền Super Admin</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-gray-700 text-slate-500 dark:text-gray-400 text-xs font-medium">Quyền Admin</span>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-end">
@@ -203,7 +198,7 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Tên đăng nhập</label>
                     <div className="relative">
                         <input 
-                            className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-slate-50 dark:bg-gray-900/50 text-slate-500 dark:text-slate-400 text-sm focus:ring-0 cursor-not-allowed" 
+                            className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-slate-50 dark:bg-gray-900/50 text-slate-500 dark:text-slate-400 text-sm focus:ring-0 cursor-not-allowed h-10 px-3" 
                             type="text" 
                             value={formData.phone} // Username defaults to Phone Number
                             readOnly
@@ -219,7 +214,7 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Mật khẩu</label>
                     <div className="relative">
                         <input 
-                            className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm pr-10" 
+                            className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm pr-10 h-10 px-3" 
                             type={showPassword ? "text" : "password"} 
                             value={portalPassword}
                             onChange={(e) => setPortalPassword(e.target.value)}
@@ -237,10 +232,9 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                   </div>
 
                   <div className="md:col-span-2 flex justify-end gap-3 mt-2">
-                     <button className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 underline">Gửi thông tin đăng nhập qua Email</button>
                      <button 
                         onClick={() => alert(`Đã cập nhật mật khẩu cho ${data.code}`)}
-                        className="flex items-center gap-2 px-4 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-medium hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg text-sm font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
                      >
                         <span className="material-symbols-outlined text-[18px]">key</span>
                         Cập nhật mật khẩu
@@ -260,7 +254,7 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Lớp đang học</label>
                     <div className="relative">
-                      <select className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm appearance-none pr-8" value={formData.class} onChange={(e) => setFormData({...formData, class: e.target.value})}>
+                      <select className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm appearance-none pr-8 h-10 px-3" value={formData.class} onChange={(e) => setFormData({...formData, class: e.target.value})}>
                         <option value="">Chưa xếp lớp</option>
                         <option value="A1.1 Cấp tốc - Online">A1.1 Cấp tốc - Online</option>
                         <option value="A1.1 - Cấp tốc K42">A1.1 - Cấp tốc K42</option>
@@ -272,7 +266,7 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Trình độ hiện tại</label>
-                    <select className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm" value={formData.level} onChange={(e) => setFormData({...formData, level: e.target.value})}>
+                    <select className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm h-10 px-3" value={formData.level} onChange={(e) => setFormData({...formData, level: e.target.value})}>
                       <option>A0 (Chưa biết gì)</option>
                       <option>A1 (Sơ cấp)</option>
                       <option>A2 (Sơ cấp nâng cao)</option>
@@ -280,7 +274,7 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Mục tiêu đầu ra</label>
-                    <select className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm" value={formData.goal} onChange={(e) => setFormData({...formData, goal: e.target.value})}>
+                    <select className="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-900 dark:text-white text-sm focus:border-primary focus:ring-primary shadow-sm h-10 px-3" value={formData.goal} onChange={(e) => setFormData({...formData, goal: e.target.value})}>
                       <option>B1 (Trung cấp)</option>
                       <option>B2 (Trung cấp nâng cao)</option>
                       <option>C1 (Cao cấp)</option>
@@ -288,7 +282,7 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Người tư vấn</label>
-                    <div className="flex items-center gap-2 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
+                    <div className="flex items-center gap-2 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 h-10">
                       <div className="w-6 h-6 rounded-full bg-gray-300 bg-cover" style={{backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuDnP8L8dhkjlaUCYv5kzPRDfFbnnQyyttN_dDhqd9XQJBZCyCc6RBeB21DMp94z2sjWVeE9WMJA4IkaRMv7dhMh8YawBXWXh7IztF6DBPNnoAgsgepcGfz8lZfPInf-Ht2YyyvEMSDPrP0V6nbRz1j7u6iqlJaBvVNy_3fDKbMs1H3B95eofwZ0BZOcv-NjWvwWDvQZYMxD3jkswZ5xMwaUgyu2N3PLGpvI03ltj-ekYokn6nWchBQmz0-4Lb6bBJWOFMHxt8OTQNFi')"}}></div>
                       <span className="text-sm text-slate-900 dark:text-white font-medium">{formData.consultant}</span>
                     </div>
@@ -407,13 +401,13 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a2230] flex justify-between items-center shrink-0">
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a2230] flex justify-between items-center shrink-0 safe-area-pb">
           <button 
             onClick={onDelete}
             className="text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-2 rounded-lg transition-colors flex items-center gap-2"
           >
             <span className="material-symbols-outlined text-[18px]">delete</span>
-            Xóa {isStudent(data) ? 'học viên' : 'lead'}
+            <span className="hidden sm:inline">Xóa {isStudent(data) ? 'học viên' : 'lead'}</span>
           </button>
           <div className="flex gap-3">
             <button 
@@ -424,7 +418,7 @@ const StudentDetailsModal: React.FC<Props> = ({ data, onClose, onSave, onDelete 
             </button>
             <button 
                 onClick={() => onSave && onSave(formData)}
-                className="px-5 py-2.5 rounded-lg bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white font-medium text-sm shadow-sm shadow-primary/30 transition-all flex items-center gap-2"
+                className="px-5 py-2.5 rounded-lg bg-primary hover:bg-primary-dark active:bg-primary-active active:shadow-inner text-white font-bold text-sm shadow-sm shadow-primary/30 transition-all flex items-center gap-2"
             >
               <span className="material-symbols-outlined text-[18px]">save</span>
               Lưu thay đổi

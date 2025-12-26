@@ -16,7 +16,7 @@ interface CalendarEvent {
   teacher: string;
   teacherAvatar?: string;
   room: string;
-  status: 'active' | 'upcoming' | 'full' | 'finished' | 'paused';
+  status: 'active' | 'upcoming' | 'full' | 'finished' | 'paused' | 'incomplete' | 'missed';
   color: string;
   index?: number;
   isLocked?: boolean;
@@ -32,6 +32,7 @@ interface PopupState {
     x: number;
     y: number;
     event: CalendarEvent | null;
+    positionClass?: string; // To handle transform origin if needed
 }
 
 const Calendar: React.FC = () => {
@@ -54,17 +55,24 @@ const Calendar: React.FC = () => {
   // Close popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // Check if click is on the calendar event itself to prevent immediate close/re-open flicker if needed
+      // But mostly we just check if it's outside the popup
       if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
         setPopup(prev => ({ ...prev, visible: false }));
       }
     };
     const handleScroll = () => setPopup(prev => ({ ...prev, visible: false }));
+    const handleEsc = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') setPopup(prev => ({ ...prev, visible: false }));
+    };
 
     document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleEsc);
     window.addEventListener('scroll', handleScroll, true); 
     
     return () => {
         document.removeEventListener('mousedown', handleClickOutside);
+        window.removeEventListener('keydown', handleEsc);
         window.removeEventListener('scroll', handleScroll, true);
     };
   }, []);
@@ -105,7 +113,7 @@ const Calendar: React.FC = () => {
                 teacher: cls.teacher,
                 teacherAvatar: cls.teacherAvatar,
                 room: cls.mode === 'online' ? (cls.link || 'Online') : (cls.location?.split(',')[0] || 'Tại trung tâm'),
-                status: cls.status,
+                status: (session as any).status || cls.status, 
                 color: session.isExtra ? 'purple' : 'blue',
                 index: session.index,
                 isLocked: session.isLocked,
@@ -119,67 +127,53 @@ const Calendar: React.FC = () => {
     return generatedEvents;
   }, [classes, currentDate, teacherFilter, classTypeFilter, generateClassSessions]);
 
-  // --- SMART POSITIONING LOGIC ---
+  // --- SMART POSITIONING ALGORITHM (Global Rule #2) ---
   const handleEventClick = (e: React.MouseEvent, evt: CalendarEvent, colIndex: number) => {
       e.stopPropagation();
       const target = e.currentTarget as HTMLElement;
       const rect = target.getBoundingClientRect();
       
-      // Viewport Dimensions
-      const viewportW = window.innerWidth;
-      const viewportH = window.innerHeight;
-      
-      // Popover Dimensions (Approximate)
-      const popoverW = 320;
-      const popoverH = 340; 
-      const gap = 8; // Required Offset
-      const headerHeight = 80; // Safety top margin
+      // Constants
+      const POPUP_WIDTH = 340; 
+      const POPUP_HEIGHT_EST = 380; // Estimated max height
+      const GAP = 12;
+      const VIEWPORT_W = window.innerWidth;
+      const VIEWPORT_H = window.innerHeight;
 
       let x = 0;
       let y = 0;
 
-      // 1. HORIZONTAL ALIGNMENT (Side Flip)
-      // Logic: If Mon/Tue (Col 0,1) -> Force Right
-      //        If Sat/Sun (Col 5,6) -> Force Left
-      //        Else -> Smart Fit (Default Right)
-      
-      let placeRight = true;
-      if (colIndex >= 5) {
-          placeRight = false; // Force Left for Sat/Sun
-      } else if (colIndex <= 1) {
-          placeRight = true; // Force Right for Mon/Tue
+      // 1. Horizontal Placement (Prefer Right, Flip Left if no space)
+      // Check space on right
+      if (rect.right + GAP + POPUP_WIDTH > VIEWPORT_W) {
+          // Overflow right -> Place Left
+          x = rect.left - POPUP_WIDTH - GAP;
       } else {
-          // Middle columns: Check if right side has space
-          if (rect.right + gap + popoverW > viewportW) {
-              placeRight = false;
-          }
+          // Place Right
+          x = rect.right + GAP;
       }
 
-      if (placeRight) {
-          x = rect.right + gap;
+      // Mobile Fallback: If screen is too small (e.g. mobile), center it or ensure valid X
+      if (VIEWPORT_W < 768) {
+          x = (VIEWPORT_W - POPUP_WIDTH) / 2; // Center
+          if (x < 10) x = 10;
       } else {
-          x = rect.left - popoverW - gap;
+          // Desktop Boundary Safety
+          if (x < 10) x = 10; // Don't go off left edge
       }
 
-      // 2. VERTICAL ALIGNMENT (Anti-Clipping)
-      // Default: Align Top of Popover with Top of Event
+      // 2. Vertical Placement (Containment - Global Rule #2)
+      // Align top with element initially
       y = rect.top;
 
       // Check Bottom Overflow
-      if (y + popoverH > viewportH) {
-          // Shift up to align bottoms
-          y = rect.bottom - popoverH;
+      if (y + POPUP_HEIGHT_EST > VIEWPORT_H) {
+          // Shift Up
+          y = VIEWPORT_H - POPUP_HEIGHT_EST - GAP;
       }
-
-      // Check Top Overflow (Header Clipping)
-      // If the calculated y is too high (under the header), push it down
-      if (y < headerHeight) {
-          y = headerHeight + 10;
-      }
-
-      // Boundary Safety
-      if (x < 10) x = 10;
-      if (x + popoverW > viewportW) x = viewportW - popoverW - 10;
+      
+      // Check Top Overflow (e.g. if shifted up too much)
+      if (y < GAP) y = GAP;
 
       setPopup({ visible: true, x, y, event: evt });
   };
@@ -269,6 +263,7 @@ const Calendar: React.FC = () => {
         
         <div className="flex flex-col bg-white dark:bg-[#1a202c] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden min-h-full">
             
+            {/* Calendar Control Header */}
             <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 shrink-0 z-20">
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
                     
@@ -321,6 +316,7 @@ const Calendar: React.FC = () => {
                 </div>
             </div>
 
+            {/* Calendar Grid */}
             <div className="flex-1 flex flex-col">
                 <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 sticky top-0 z-10">
                     {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'].map((d, i) => (
@@ -355,11 +351,21 @@ const Calendar: React.FC = () => {
                                     <div className="hidden lg:flex flex-col gap-1.5 w-full">
                                         {dayEvents.map(evt => {
                                             const isOnline = evt.mode === 'online';
-                                            const cardBg = isOnline 
-                                                ? 'bg-orange-50 hover:bg-orange-100 border-orange-200 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 dark:border-orange-800' 
-                                                : 'bg-blue-50 hover:bg-blue-100 border-blue-200 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 dark:border-blue-800';
-                                            const textColor = isOnline ? 'text-orange-800 dark:text-orange-200' : 'text-blue-800 dark:text-blue-200';
-                                            const timeColor = isOnline ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600 dark:text-blue-400';
+                                            const isIncomplete = evt.status === 'incomplete';
+                                            const isFinished = evt.status === 'finished';
+                                            
+                                            // Dynamic Styling for Incomplete
+                                            let cardBg, textColor;
+                                            if (isIncomplete) {
+                                                // Gray striped for incomplete
+                                                cardBg = 'bg-slate-100 border-slate-300 dark:bg-slate-800 dark:border-slate-600 bg-[linear-gradient(45deg,rgba(0,0,0,0.03)_25%,transparent_25%,transparent_50%,rgba(0,0,0,0.03)_50%,rgba(0,0,0,0.03)_75%,transparent_75%,transparent)] bg-[length:10px_10px]';
+                                                textColor = 'text-slate-600 dark:text-slate-400';
+                                            } else {
+                                                cardBg = isOnline 
+                                                    ? 'bg-orange-50 hover:bg-orange-100 border-orange-200 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 dark:border-orange-800' 
+                                                    : 'bg-blue-50 hover:bg-blue-100 border-blue-200 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 dark:border-blue-800';
+                                                textColor = isOnline ? 'text-orange-800 dark:text-orange-200' : 'text-blue-800 dark:text-blue-200';
+                                            }
 
                                             return (
                                                 <button 
@@ -367,10 +373,12 @@ const Calendar: React.FC = () => {
                                                     onClick={(e) => {
                                                         handleEventClick(e, evt, colIndex);
                                                     }}
-                                                    className={`w-full text-left border ${cardBg} rounded px-2 py-1.5 transition-all shadow-sm hover:shadow group/card relative z-10`}
+                                                    className={`w-full text-left border ${cardBg} rounded px-2 py-1.5 transition-all shadow-sm hover:shadow group/card relative z-10 ${isFinished ? 'opacity-70 grayscale-[0.3]' : ''}`}
                                                 >
-                                                    <div className={`text-[11px] font-bold ${textColor} leading-tight whitespace-normal break-words`}>
-                                                        {evt.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} {evt.code}
+                                                    <div className={`text-[11px] font-bold ${textColor} leading-tight whitespace-normal break-words flex items-center justify-between`}>
+                                                        <span>{evt.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} {evt.code}</span>
+                                                        {isFinished && <span className="material-symbols-outlined text-[14px] text-green-600 font-bold">check_circle</span>}
+                                                        {isIncomplete && <span className="material-symbols-outlined text-[14px] text-orange-500 font-bold" title="Chưa điểm danh đủ">warning</span>}
                                                     </div>
                                                     {evt.isExtra && (
                                                         <span className="absolute top-1 right-1 size-1.5 bg-purple-500 rounded-full ring-1 ring-white"></span>
@@ -383,7 +391,7 @@ const Calendar: React.FC = () => {
                                     <div className="lg:hidden flex flex-wrap content-start gap-1.5">
                                         {dayEvents.map(evt => {
                                             const isOnline = evt.mode === 'online';
-                                            const dotColor = isOnline ? 'bg-orange-500' : 'bg-blue-600';
+                                            const dotColor = evt.status === 'incomplete' ? 'bg-slate-400' : isOnline ? 'bg-orange-500' : 'bg-blue-600';
                                             return (
                                                 <button
                                                     key={evt.id}
@@ -409,45 +417,48 @@ const Calendar: React.FC = () => {
       {popup.visible && popup.event && createPortal(
           <div 
             ref={popupRef}
-            className="fixed z-[9999] w-[320px] bg-white dark:bg-[#1e293b] rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-hidden"
+            className="fixed z-[9999] w-[340px] bg-white dark:bg-[#1e293b] rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-hidden max-h-[80vh]"
             style={{
                 left: popup.x,
                 top: popup.y,
             }}
           >
-              <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-start bg-slate-50 dark:bg-slate-800/50">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-start bg-slate-50 dark:bg-slate-800/50 shrink-0">
                   <div>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1.5">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${popup.event.mode === 'online' ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
                               {popup.event.mode}
                           </span>
                           {popup.event.index && <span className="text-xs font-bold text-slate-400">Buổi {popup.event.index}</span>}
+                          {popup.event.status === 'finished' && <span className="text-xs font-bold text-green-600 flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">check_circle</span> Đã học</span>}
+                          {popup.event.status === 'incomplete' && <span className="text-xs font-bold text-orange-600 flex items-center gap-1"><span className="material-symbols-outlined text-[12px]">warning</span> Chưa đủ</span>}
                       </div>
-                      <h4 className="font-bold text-slate-900 dark:text-white text-base leading-tight">{popup.event.title}</h4>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-base leading-tight pr-6">{popup.event.title}</h4>
                   </div>
                   <button 
                       onClick={() => setPopup(prev => ({...prev, visible: false}))}
-                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                   >
-                      <span className="material-symbols-outlined text-lg">close</span>
+                      <span className="material-symbols-outlined text-xl">close</span>
                   </button>
               </div>
 
-              <div className="p-4 flex flex-col gap-3 text-sm">
+              {/* Scrollable Body for Overflow Protection */}
+              <div className="p-5 flex flex-col gap-4 text-sm overflow-y-auto flex-1 custom-scrollbar">
                   <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
-                      <span className="material-symbols-outlined text-slate-400">schedule</span>
+                      <span className="material-symbols-outlined text-slate-400 text-[20px]">schedule</span>
                       <span className="font-medium">
                           {popup.event.start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - {popup.event.end.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
                       </span>
                   </div>
                   
                   <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
-                      <span className="material-symbols-outlined text-slate-400">person</span>
+                      <span className="material-symbols-outlined text-slate-400 text-[20px]">person</span>
                       <span className="font-medium">{popup.event.teacher}</span>
                   </div>
 
                   <div className="flex items-start gap-3 text-slate-600 dark:text-slate-300">
-                      <span className="material-symbols-outlined text-slate-400 mt-0.5">
+                      <span className="material-symbols-outlined text-slate-400 mt-0.5 text-[20px]">
                           {popup.event.mode === 'online' ? 'link' : 'location_on'}
                       </span>
                       <div className="flex-1">
@@ -460,27 +471,27 @@ const Calendar: React.FC = () => {
                           )}
                       </div>
                   </div>
+              </div>
 
-                  <hr className="border-slate-50 dark:border-slate-700 my-1"/>
-                  
-                  <div className="grid grid-cols-2 gap-2 mt-1">
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-700 shrink-0">
+                  <div className="grid grid-cols-2 gap-3">
                       <button 
                           onClick={() => handleAttendanceRedirect(popup.event!)}
-                          className="col-span-2 flex items-center justify-center gap-2 py-2.5 bg-primary text-white text-sm font-bold rounded-xl shadow-md shadow-blue-500/20 hover:bg-primary-dark transition-all active:scale-[0.98]"
+                          className={`col-span-2 flex items-center justify-center gap-2 py-3 text-white text-sm font-bold rounded-xl shadow-md transition-all active:scale-[0.98] ${popup.event.status === 'incomplete' ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/20' : 'bg-primary hover:bg-primary-dark shadow-blue-500/20'}`}
                       >
-                          <span className="material-symbols-outlined text-[18px]">fact_check</span>
-                          Điểm danh
+                          <span className="material-symbols-outlined text-[20px]">fact_check</span>
+                          {popup.event.status === 'finished' ? 'Xem điểm danh' : 'Điểm danh ngay'}
                       </button>
                       <button 
                           onClick={() => handleShiftSchedule(popup.event!)}
-                          className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold transition-colors ${isAssistant ? 'opacity-50 cursor-not-allowed text-slate-400' : 'hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'}`}
+                          className={`flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold transition-colors ${isAssistant ? 'opacity-50 cursor-not-allowed text-slate-400' : 'hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'}`}
                       >
                           <span className="material-symbols-outlined text-[18px]">edit_calendar</span>
                           Lùi lịch
                       </button>
                       <button 
                           onClick={() => handleCancelSession(popup.event!)}
-                          className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 text-xs font-bold transition-colors ${isAssistant ? 'opacity-50 cursor-not-allowed text-red-300' : 'hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400'}`}
+                          className={`flex items-center justify-center gap-2 py-3 rounded-xl border border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 text-xs font-bold transition-colors ${isAssistant ? 'opacity-50 cursor-not-allowed text-red-300' : 'hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400'}`}
                       >
                           <span className="material-symbols-outlined text-[18px]">event_busy</span>
                           Hủy lịch

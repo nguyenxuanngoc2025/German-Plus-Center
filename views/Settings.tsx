@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 
 const Settings: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser, startSimulation, settings, updateSettings } = useData();
+  const { currentUser, startSimulation, settings, updateSettings, resetSystemData } = useData();
 
   // --- Branding State ---
   const [systemName, setSystemName] = useState(settings.systemName);
@@ -447,6 +447,23 @@ const Settings: React.FC = () => {
                             </div>
                         </div>
                     </section>
+
+                    {/* DANGER ZONE: Reset Data */}
+                    <div className="bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-200 dark:border-red-900 p-6 flex flex-col gap-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-red-800 dark:text-red-300 uppercase flex items-center gap-2">
+                                <span className="material-symbols-outlined">warning</span>
+                                Dữ liệu kiểm thử
+                            </h3>
+                            <p className="text-xs text-red-600 dark:text-red-400 mt-1">Xóa toàn bộ dữ liệu bạn đã nhập và khôi phục về trạng thái mẫu ban đầu.</p>
+                        </div>
+                        <button 
+                            onClick={resetSystemData}
+                            className="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm shadow-sm transition-colors"
+                        >
+                            Khôi phục Dữ liệu Gốc
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
