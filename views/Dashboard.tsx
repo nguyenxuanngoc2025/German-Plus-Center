@@ -203,6 +203,7 @@ const Dashboard: React.FC = () => {
         showCompare={true}
         showSource={activeTab === 'marketing'}
         showClassType={activeTab === 'academic' || activeTab === 'marketing'}
+        childrenPosition="left"
         children={
             <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-lg shrink-0">
                 {[

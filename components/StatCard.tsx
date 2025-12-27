@@ -61,18 +61,18 @@ const StatCard: React.FC<StatCardProps> = ({
       className={`
         relative group rounded-2xl border border-slate-200 dark:border-slate-700 
         bg-white dark:bg-[#1a202c] p-5 shadow-sm transition-all duration-300 ease-in-out
-        hover:-translate-y-1 hover:shadow-lg hover:ring-2 hover:ring-offset-0 ${hoverRingStyles[color]}
+        hover:-translate-y-1 hover:shadow-lg hover:ring-2 hover:ring-offset-0 hover:z-[999] ${hoverRingStyles[color]}
         ${onClick ? 'cursor-pointer' : 'cursor-default'}
         ${className}
       `}
     >
-      {/* Smart Tooltip */}
+      {/* Smart Tooltip - Extremely High Z-Index & Neutral Theme */}
       {tooltip && (
-        <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 z-50 pointer-events-none">
-            <div className="bg-slate-800 text-white text-xs rounded-lg py-2 px-3 shadow-xl relative">
+        <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 z-[9999] pointer-events-none">
+            <div className="bg-slate-800 dark:bg-white text-white dark:text-slate-900 text-[13px] font-medium leading-relaxed rounded-xl py-3 px-4 shadow-xl relative">
                 {tooltip}
                 {/* Arrow */}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800"></div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-800 dark:border-t-white"></div>
             </div>
         </div>
       )}
