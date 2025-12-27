@@ -1,5 +1,6 @@
 
-import React from 'react';
+import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 type ColorTheme = 'blue' | 'green' | 'red' | 'orange' | 'purple' | 'teal';
 
@@ -27,6 +28,25 @@ const StatCard: React.FC<StatCardProps> = ({
   className = ''
 }) => {
   
+  const [isHovered, setIsHovered] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseEnter = () => {
+    if (cardRef.current) {
+        const rect = cardRef.current.getBoundingClientRect();
+        setCoords({
+            top: rect.top, 
+            left: rect.left + rect.width / 2 
+        });
+        setIsHovered(true);
+    }
+  };
+
+  const handleMouseLeave = () => {
+      setIsHovered(false);
+  };
+
   // Theme Maps
   const bgStyles = {
     blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600',
@@ -56,27 +76,20 @@ const StatCard: React.FC<StatCardProps> = ({
   };
 
   return (
+    <>
     <div 
+      ref={cardRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       onClick={onClick}
       className={`
         relative group rounded-2xl border border-slate-200 dark:border-slate-700 
         bg-white dark:bg-[#1a202c] p-5 shadow-sm transition-all duration-300 ease-in-out
-        hover:-translate-y-1 hover:shadow-lg hover:ring-2 hover:ring-offset-0 hover:z-[999] ${hoverRingStyles[color]}
+        hover:-translate-y-1 hover:shadow-lg hover:ring-2 hover:ring-offset-0 hover:z-[50] ${hoverRingStyles[color]}
         ${onClick ? 'cursor-pointer' : 'cursor-default'}
         ${className}
       `}
     >
-      {/* Smart Tooltip - Extremely High Z-Index & Neutral Theme */}
-      {tooltip && (
-        <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 z-[9999] pointer-events-none">
-            <div className="bg-slate-800 dark:bg-white text-white dark:text-slate-900 text-[13px] font-medium leading-relaxed rounded-xl py-3 px-4 shadow-xl relative">
-                {tooltip}
-                {/* Arrow */}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-800 dark:border-t-white"></div>
-            </div>
-        </div>
-      )}
-
       {/* Decorative Blob */}
       <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full opacity-0 group-hover:opacity-10 transition-opacity duration-500 ${bgStyles[color]} blur-2xl pointer-events-none`}></div>
 
@@ -108,6 +121,26 @@ const StatCard: React.FC<StatCardProps> = ({
         </div>
       )}
     </div>
+
+    {/* Portal Tooltip: Fixed Position, High Z-Index, Apple Style */}
+    {isHovered && tooltip && createPortal(
+        <div 
+            className="fixed z-[9999] pointer-events-none transition-opacity duration-200 animate-in fade-in zoom-in-95"
+            style={{ 
+                top: coords.top - 12, // 12px gap
+                left: coords.left,
+                transform: 'translate(-50%, -100%)' 
+            }}
+        >
+            <div className="bg-slate-900/90 dark:bg-white/90 backdrop-blur-md text-white dark:text-slate-900 text-[13px] font-medium leading-relaxed rounded-xl py-3 px-4 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border border-white/10 dark:border-slate-200 relative max-w-[250px] text-center">
+                {tooltip}
+                {/* Arrow */}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-900/90 dark:border-t-white/90"></div>
+            </div>
+        </div>,
+        document.body
+    )}
+    </>
   );
 };
 

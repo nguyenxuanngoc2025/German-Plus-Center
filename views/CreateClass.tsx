@@ -118,7 +118,7 @@ const CreateClass: React.FC = () => {
 
       // Only update if changed to avoid unnecessary renders
       if (genName !== formData.className || genCode !== formData.classCode) {
-          setFormData({ ...formData, className: genName, classCode: genCode });
+          setFormData(prev => ({ ...prev, className: genName, classCode: genCode }));
       }
 
   }, [formData.batch, formData.classType, formData.level, formData.selectedDays]);
@@ -150,11 +150,11 @@ const CreateClass: React.FC = () => {
     } else {
         newDays = [...currentDays, day];
     }
-    setFormData({ ...formData, selectedDays: newDays });
+    setFormData(prev => ({ ...prev, selectedDays: newDays }));
   };
 
   const updateField = (field: string, value: any) => {
-      setFormData({ ...formData, [field]: value });
+      setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSave = () => {
