@@ -3,10 +3,11 @@
   "name": "german-plus-crm",
   "version": "1.0.0",
   "description": "German Plus CRM - Language Center Management System",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "start": "vite",
+    "dev": "vite",
     "build": "vite build",
+    "start": "node server.js",
     "preview": "vite preview",
     "db:setup": "node scripts/db-setup.js"
   },
@@ -15,12 +16,13 @@
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.11.0",
     "recharts": "^3.6.0",
-    "mysql2": "^3.9.1",
-    "sequelize": "^6.37.1",
-    "dotenv": "^16.4.1",
-    "axios": "^1.6.7",
     "clsx": "^2.1.0",
-    "tailwind-merge": "^2.2.1"
+    "tailwind-merge": "^2.2.1",
+    "express": "^4.18.2",
+    "mysql2": "^3.9.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.1",
+    "path": "^0.12.7"
   },
   "devDependencies": {
     "@types/react": "^18.2.55",
